@@ -14,7 +14,7 @@ export const UpgradePrompt = ({
 }: UpgradePromptProps) => {
   const handleUpgrade = () => {
     // Open pricing page in new tab
-    window.open('https://www.real-sales.com/pricing', '_blank');
+    window.open('https://mainreal-sales.vercel.app/pricing', '_blank');
   };
 
   return (

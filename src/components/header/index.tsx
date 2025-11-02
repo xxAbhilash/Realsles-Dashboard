@@ -55,7 +55,7 @@ const Header = (props: any) => {
         <nav className="main-nav flex justify-between items-center ">
           <Link
             onClick={() => ClearCash()}
-            to="https://www.real-sales.com/" className="logo">
+            to="https://mainreal-sales.vercel.app/" className="logo">
             <img
               src={Colorlogonobackground}
               alt="RealSales Logo"
@@ -71,7 +71,7 @@ const Header = (props: any) => {
               <div>
                 <Link
                   onClick={() => ClearCash()}
-                  to="https://www.real-sales.com/"
+                  to="https://mainreal-sales.vercel.app/"
                   className={getNavLinkClasses("/")}
                 >
                   Home
@@ -80,7 +80,7 @@ const Header = (props: any) => {
               <div>
                 <Link
                   onClick={() => ClearCash()}
-                  to="https://www.real-sales.com/about"
+                  to="https://mainreal-sales.vercel.app/about"
                   className={getNavLinkClasses("/about")}
                 >
                   About
@@ -109,7 +109,7 @@ const Header = (props: any) => {
                     style={{ transitionDelay: "0.15s" }} // keeps dropdown visible a little longer
                   >
                     <Link
-                      to="https://www.real-sales.com/industries/food-equipments"
+                      to="https://mainreal-sales.vercel.app/industries/food-equipments"
                       onClick={() => ClearCash()}
                       className="block px-4 py-2 text-white hover:bg-[#FFDE5A] hover:text-[#060606] transition-colors duration-200"
                     >
@@ -173,7 +173,7 @@ onClick={()=>ClearCash()}
               <div>
                 <Link
                   onClick={() => ClearCash()}
-                  to="https://www.real-sales.com/faq"
+                  to="https://mainreal-sales.vercel.app/faq"
                   className={getNavLinkClasses("/faq")}
                 >
                   FAQ
@@ -243,7 +243,7 @@ onClick={()=>ClearCash()}
               <ul className="px-4">
                 <li className="py-2 border-b">
                   <Link
-                    to="https://www.real-sales.com/" 
+                    to="https://mainreal-sales.vercel.app/" 
                     onClick={() => { ClearCash(); setMobileMenuOpen(false) }}
                     className={getNavLinkClasses("/")}
                   >
@@ -252,7 +252,7 @@ onClick={()=>ClearCash()}
                 </li>
                 <li className="py-2 border-b">
                   <Link
-                    to="https://www.real-sales.com/about" 
+                    to="https://mainreal-sales.vercel.app/about" 
                     onClick={() => { ClearCash(); setMobileMenuOpen(false) }}
                     className={getNavLinkClasses("/about")}
                   >
@@ -263,7 +263,7 @@ onClick={()=>ClearCash()}
                   <div className="text-white">Case Study & Industries</div>
                   <div className="ml-4 mt-2 space-y-2">
                     <Link
-                      to="https://www.real-sales.com/industries/food-equipments" 
+                      to="https://mainreal-sales.vercel.app/industries/food-equipments" 
                       onClick={() => { ClearCash(); setMobileMenuOpen(false) }}
                       className="block text-sm text-gray-300 hover:text-yellow-400 transition-colors duration-200"
                     >
@@ -280,7 +280,7 @@ onClick={()=>ClearCash()}
                 </li>
                 <li className="py-2 border-b">
                   <Link
-                    to="https://www.real-sales.com/faq" 
+                    to="https://mainreal-sales.vercel.app/faq" 
                     onClick={() => { ClearCash(); setMobileMenuOpen(false) }}
                     className={getNavLinkClasses("/faq")}
                   >

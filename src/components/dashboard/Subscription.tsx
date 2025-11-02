@@ -166,7 +166,7 @@ export default function Subscription() {
 
   // Handle upgrade button click
   const handleUpgrade = () => {
-    window.location.href = "https://www.real-sales.com/pricing";
+    window.location.href = "https://mainreal-sales.vercel.app/pricing";
   };
 
   // Handle cancel subscription

@@ -36,7 +36,7 @@ export function Sessions() {
 
 
   const handleStartSession = () => {
-    window.location.href = "https://www.real-sales.com/about";
+    window.location.href = "https://mainreal-sales.vercel.app/about";
   };
 
 
