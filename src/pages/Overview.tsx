@@ -15,6 +15,7 @@ export default function Overview() {
   const user = useSelector((state: RootState) => state.auth.user) as UserData;
   const [isRequestingTrial, setIsRequestingTrial] = useState(false);
   const [trialRequests, setTrialRequests] = useState<any[]>([]);
+  const [personasCount, setPersonasCount] = useState<number>(0);
 
   
   const token = useMemo(() => {
@@ -80,9 +81,34 @@ export default function Overview() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, hasActiveSubscription]);
+
+  // Fetch personas count
+  const fetchPersonasCount = async () => {
+    try {
+      const response = await Get(apis.ai_personas);
+      if (response) {
+        // Handle both array and object responses
+        if (Array.isArray(response)) {
+          setPersonasCount(response.length);
+        } else if (response.count !== undefined) {
+          setPersonasCount(response.count);
+        } else if (response.results && Array.isArray(response.results)) {
+          setPersonasCount(response.results.length);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching personas count:", error);
+    }
+  };
+
+  // Fetch personas count on component mount
+  useEffect(() => {
+    fetchPersonasCount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   const handleStartSession = () => {
-    window.location.href = "https://mainreal-sales.vercel.app/about";
+    window.location.href = "https://www.real-sales.com/about";
   };
   
   const handleRequestTrial = async () => {
@@ -107,12 +133,12 @@ export default function Overview() {
     }
   };
   
-  const stats = [
-    { label: "Success Rate", value: "92%", description: "Average improvement", icon: <TrendingUp className="w-5 h-5" /> },
-    { label: "Active Users", value: "2.4k+", description: "Worldwide", icon: <Users className="w-5 h-5" /> },
-    { label: "AI Sessions", value: "150k+", description: "Completed", icon: <MessageSquare className="w-5 h-5" /> },
-    { label: "ROI Increase", value: "47%", description: "Average reported", icon: <BarChart className="w-5 h-5" /> }
-  ];
+  const stats = useMemo(() => [
+    { label: "Sales Performance", value: "55%", description: "Average improvement", icon: <TrendingUp className="w-5 h-5" /> },
+    { label: "Active Users", value: "20+", description: "Worldwide", icon: <Users className="w-5 h-5" /> },
+    { label: "AI Sessions", value: "1k+", description: "Completed", icon: <MessageSquare className="w-5 h-5" /> },
+    { label: "Presona Availabe", value: personasCount > 0 ? personasCount.toString() : "Loading...", description: "Across all modes", icon: <BarChart className="w-5 h-5" /> }
+  ], [personasCount]);
 
   const features = [
     {
