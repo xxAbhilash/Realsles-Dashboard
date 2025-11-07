@@ -872,7 +872,7 @@ export function Teams() {
   } else {
     // meber details
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-8">
         <div className="flex items-center justify-between gap-4 relative">
           <div className="w-full flex items-center justify-between gap-4">
             <div>
@@ -902,20 +902,20 @@ export function Teams() {
             {Array.isArray(data) && data.map((team, teamIdx) => (
               team?.company_team_id === selectedTeam?.company_team_id ?
                 <div key={`team-${teamIdx}`}>
-                  <CardHeader>
+                  <CardHeader className="pb-4">
                     {/* <span className="font-semibold">Team Performance - {team?.name}</span> */}
                     {team.members.map((member, memberIdx) => (
                       member?.member_id === selectMember ?
-                        <div key={memberIdx}>
+                        <div key={memberIdx} className="space-y-2">
                           <div className="flex flex-col items-start w-full">
                             <span className="font-semibold text-xl text-gray-700">{member?.user?.first_name} {member?.user?.last_name}</span>
                             <span className="text-base text-gray-500">{member?.user?.email}</span>
                           </div>
                         </div> : null))}
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="p-6">
                     <div className="shadow-none border-none">
-                      <div className="space-y-4 p-0">
+                      <div className="space-y-6 p-0">
 
                         {/* Members Performance */}
                         {Array.isArray(team?.members) && (
@@ -931,133 +931,122 @@ export function Teams() {
                                   </div> */}
                                   <div>
                                     {/* Member Overall Score */}
-                                    {typeof member?.overall_average_score === 'number' && (
-                                      <div className="space-y-2 mb-3">
-                                        <div className="flex justify-between items-center">
-                                          <span className="text-base font-medium">Overall Score</span>
-                                          <span className="text-bse text-black font-bold">{member?.overall_average_score ? member?.overall_average_score.toFixed(1) : 0}/100</span>
-                                        </div>
-                                        <Progress value={member?.overall_average_score} className="h-2.5" />
+                                    <div className="space-y-3 mb-6">
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-base font-medium">Overall Score</span>
+                                        <span className="text-bse text-black font-bold">{(member?.overall_average_score ?? 0).toFixed(1)}/100</span>
                                       </div>
-                                    )}
+                                      <Progress value={member?.overall_average_score ?? 0} className="h-2.5" />
+                                    </div>
                                     {/* Performance by Mode (already accordionized) */}
                                     {Array.isArray(member?.performance_by_mode) && (
-                                      <div className="ml-4 mb-3">
-                                        {member.performance_by_mode.map((mode, modeIdx) => (
-                                          <div key={modeIdx}>
-                                            <div>
-                                              <div className="flex justify-between items-center w-full">
-                                                <span className="text-base font-medium capitalize">{mode?.mode_name}</span>
-                                                <span className="text-bse text-gray-600">{mode?.session_count} sessions</span>
-                                              </div>
-                                            </div>
-                                            <div>
-                                              {/* Mode Overall Score */}
-                                              {typeof mode?.average_overall_score === 'number' && (
-                                                <div className="space-y-1 mb-2">
-                                                  <div className="flex justify-between items-center">
-                                                    <span className="text-bse">Overall</span>
-                                                    <span className="text-bse text-black font-bold">{mode?.average_overall_score ? mode?.average_overall_score.toFixed(1) : 0}/100</span>
-                                                  </div>
-                                                  <Progress value={mode?.average_overall_score} className="h-2" />
+                                      <div className="ml-4 space-y-6">
+                                        {member.performance_by_mode.map((mode, modeIdx) => {
+                                          const sessionCount = mode?.session_count || 0;
+                                          const overallScore = mode?.average_overall_score ?? 0;
+                                          
+                                          return (
+                                            <div key={modeIdx} className="pb-4 border-b border-gray-200 last:border-b-0 last:pb-0">
+                                              <div className="mb-4">
+                                                <div className="flex justify-between items-center w-full">
+                                                  <span className="text-base font-medium capitalize">{mode?.mode_name}</span>
+                                                  <span className="text-bse text-gray-600">{sessionCount} sessions</span>
                                                 </div>
-                                              )}
-                                              {/* Individual Skills */}
-                                              <div className="space-y-1 ml-2">
-                                                {mode?.average_engagement_level !== null && (
-                                                  <div className="space-y-1">
-                                                    <div className="flex justify-between items-center">
-                                                      <span className="text-bse">Engagement</span>
-                                                      <span className="text-bse text-black">{mode?.average_engagement_level ? mode?.average_engagement_level.toFixed(1) : 0}/100</span>
-                                                    </div>
-                                                    <Progress value={mode?.average_engagement_level} className="h-2" />
+                                              </div>
+                                              <div>
+                                                {sessionCount === 0 ? (
+                                                  <div className="text-center py-6 text-muted-foreground">
+                                                    <span className="text-base">No Sessions Completed</span>
                                                   </div>
-                                                )}
-                                                {mode?.average_communication_level !== null && (
-                                                  <div className="space-y-1">
-                                                    <div className="flex justify-between items-center">
-                                                      <span className="text-bse">Communication</span>
-                                                      <span className="text-bse text-black">{mode?.average_communication_level ? mode?.average_communication_level.toFixed(1) : 0}/100</span>
+                                                ) : (
+                                                  <>
+                                                    {/* Mode Overall Score */}
+                                                    <div className="space-y-2 mb-4">
+                                                      <div className="flex justify-between items-center">
+                                                        <span className="text-bse">Overall</span>
+                                                        <span className="text-bse text-black font-bold">{overallScore.toFixed(1)}/100</span>
+                                                      </div>
+                                                      <Progress value={overallScore} className="h-2" />
                                                     </div>
-                                                    <Progress value={mode?.average_communication_level} className="h-2" />
-                                                  </div>
-                                                )}
-                                                {mode?.average_objection_handling !== null && (
-                                                  <div className="space-y-1">
-                                                    <div className="flex justify-between items-center">
-                                                      <span className="text-bse">Objection Handling</span>
-                                                      <span className="text-bse text-black">{mode?.average_objection_handling ? mode?.average_objection_handling.toFixed(1) : 0}/100</span>
+                                                    {/* Individual Skills - Show all skills */}
+                                                    <div className="space-y-3 ml-2">
+                                                      <div className="space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                          <span className="text-bse">Engagement</span>
+                                                          <span className="text-bse text-black">{(mode?.average_engagement_level ?? 0).toFixed(1)}/100</span>
+                                                        </div>
+                                                        <Progress value={mode?.average_engagement_level ?? 0} className="h-2" />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                          <span className="text-bse">Communication</span>
+                                                          <span className="text-bse text-black">{(mode?.average_communication_level ?? 0).toFixed(1)}/100</span>
+                                                        </div>
+                                                        <Progress value={mode?.average_communication_level ?? 0} className="h-2" />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                          <span className="text-bse">Objection Handling</span>
+                                                          <span className="text-bse text-black">{(mode?.average_objection_handling ?? 0).toFixed(1)}/100</span>
+                                                        </div>
+                                                        <Progress value={mode?.average_objection_handling ?? 0} className="h-2" />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                          <span className="text-bse">Adaptability</span>
+                                                          <span className="text-bse text-black">{(mode?.average_adaptability ?? 0).toFixed(1)}/100</span>
+                                                        </div>
+                                                        <Progress value={mode?.average_adaptability ?? 0} className="h-2" />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                          <span className="text-bse">Persuasiveness</span>
+                                                          <span className="text-bse text-black">{(mode?.average_persuasiveness ?? 0).toFixed(1)}/100</span>
+                                                        </div>
+                                                        <Progress value={mode?.average_persuasiveness ?? 0} className="h-2" />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                          <span className="text-bse">Create Interest</span>
+                                                          <span className="text-bse text-black">{(mode?.average_create_interest ?? 0).toFixed(1)}/100</span>
+                                                        </div>
+                                                        <Progress value={mode?.average_create_interest ?? 0} className="h-2" />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                          <span className="text-bse">Sale Closing</span>
+                                                          <span className="text-bse text-black">{(mode?.average_sale_closing ?? 0).toFixed(1)}/100</span>
+                                                        </div>
+                                                        <Progress value={mode?.average_sale_closing ?? 0} className="h-2" />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                          <span className="text-bse">Discovery</span>
+                                                          <span className="text-bse text-black">{(mode?.average_discovery ?? 0).toFixed(1)}/100</span>
+                                                        </div>
+                                                        <Progress value={mode?.average_discovery ?? 0} className="h-2" />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                          <span className="text-bse">Cross Selling</span>
+                                                          <span className="text-bse text-black">{(mode?.average_cross_selling ?? 0).toFixed(1)}/100</span>
+                                                        </div>
+                                                        <Progress value={mode?.average_cross_selling ?? 0} className="h-2" />
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                          <span className="text-bse">Solution Fit</span>
+                                                          <span className="text-bse text-black">{(mode?.average_solution_fit ?? 0).toFixed(1)}/100</span>
+                                                        </div>
+                                                        <Progress value={mode?.average_solution_fit ?? 0} className="h-2" />
+                                                      </div>
                                                     </div>
-                                                    <Progress value={mode?.average_objection_handling} className="h-2" />
-                                                  </div>
-                                                )}
-                                                {mode?.average_adaptability !== null && (
-                                                  <div className="space-y-1">
-                                                    <div className="flex justify-between items-center">
-                                                      <span className="text-bse">Adaptability</span>
-                                                      <span className="text-bse text-black">{mode?.average_adaptability ? mode?.average_adaptability.toFixed(1) : 0}/100</span>
-                                                    </div>
-                                                    <Progress value={mode?.average_adaptability} className="h-2" />
-                                                  </div>
-                                                )}
-                                                {mode?.average_persuasiveness !== null && (
-                                                  <div className="space-y-1">
-                                                    <div className="flex justify-between items-center">
-                                                      <span className="text-bse">Persuasiveness</span>
-                                                      <span className="text-bse text-black">{mode?.average_persuasiveness ? mode?.average_persuasiveness.toFixed(1) : 0}/100</span>
-                                                    </div>
-                                                    <Progress value={mode?.average_persuasiveness} className="h-2" />
-                                                  </div>
-                                                )}
-                                                {mode?.average_create_interest !== null && (
-                                                  <div className="space-y-1">
-                                                    <div className="flex justify-between items-center">
-                                                      <span className="text-bse">Create Interest</span>
-                                                      <span className="text-bse text-black">{mode?.average_create_interest ? mode?.average_create_interest.toFixed(1) : 0}/100</span>
-                                                    </div>
-                                                    <Progress value={mode?.average_create_interest} className="h-2" />
-                                                  </div>
-                                                )}
-                                                {mode?.average_sale_closing !== null && (
-                                                  <div className="space-y-1">
-                                                    <div className="flex justify-between items-center">
-                                                      <span className="text-bse">Sale Closing</span>
-                                                      <span className="text-bse text-black">{mode?.average_sale_closing ? mode?.average_sale_closing.toFixed(1) : 0}/100</span>
-                                                    </div>
-                                                    <Progress value={mode?.average_sale_closing} className="h-2" />
-                                                  </div>
-                                                )}
-                                                {mode?.average_discovery !== null && (
-                                                  <div className="space-y-1">
-                                                    <div className="flex justify-between items-center">
-                                                      <span className="text-bse">Discovery</span>
-                                                      <span className="text-bse text-black">{mode?.average_discovery ? mode?.average_discovery.toFixed(1) : 0}/100</span>
-                                                    </div>
-                                                    <Progress value={mode?.average_discovery} className="h-2" />
-                                                  </div>
-                                                )}
-                                                {mode?.average_cross_selling !== null && (
-                                                  <div className="space-y-1">
-                                                    <div className="flex justify-between items-center">
-                                                      <span className="text-bse">Cross Selling</span>
-                                                      <span className="text-bse text-black">{mode?.average_cross_selling ? mode?.average_cross_selling.toFixed(1) : 0}/100</span>
-                                                    </div>
-                                                    <Progress value={mode?.average_cross_selling} className="h-2" />
-                                                  </div>
-                                                )}
-                                                {mode?.average_solution_fit !== null && (
-                                                  <div className="space-y-1">
-                                                    <div className="flex justify-between items-center">
-                                                      <span className="text-bse">Solution Fit</span>
-                                                      <span className="text-bse text-black">{mode?.average_solution_fit ? mode?.average_solution_fit.toFixed(1) : 0}/100</span>
-                                                    </div>
-                                                    <Progress value={mode?.average_solution_fit} className="h-2" />
-                                                  </div>
+                                                  </>
                                                 )}
                                               </div>
                                             </div>
-                                          </div>
-                                        ))}
+                                          );
+                                        })}
                                       </div>
                                     )}
                                   </div>
