@@ -216,9 +216,28 @@ export function Teams() {
       // For now, using mock data
       let data = await Get(`${sales_companies}${selectedTeam?.sales_company_id}`);
       console.log(data?.users, "data_users")
-      if (data?.users?.length) {
-        setAvailableMembers(data?.users.map((v) => ({ ...v, company: data?.name })))
+      
+      const allMembers = [];
+      
+      // Add manager first if exists
+      if (data?.manager) {
+        allMembers.push({
+          ...data.manager,
+          company: data?.name,
+          isManager: true
+        });
       }
+      
+      // Add regular users
+      if (data?.users?.length) {
+        allMembers.push(...data.users.map((v) => ({ 
+          ...v, 
+          company: data?.name,
+          isManager: false 
+        })));
+      }
+      
+      setAvailableMembers(allMembers);
     } catch (error) {
       console.error("Error fetching available members:", error);
       showToast.error("Failed to fetch available members");
@@ -639,7 +658,14 @@ export function Teams() {
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium text-gray-900 truncate">{`${member.first_name || ''} ${member.last_name || ''}`.trim() || 'Unknown Name'}</div>
+                              <div className="flex items-center gap-2">
+                                <div className="font-medium text-gray-900 truncate">{`${member.first_name || ''} ${member.last_name || ''}`.trim() || 'Unknown Name'}</div>
+                                {member.isManager && (
+                                  <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-100">
+                                    Manager
+                                  </Badge>
+                                )}
+                              </div>
                               <div className="text-sm text-gray-500 truncate">{member.email || 'No email'}</div>
                               <div className="text-xs text-gray-400">{member.company || 'Unknown Company'}</div>
                             </div>
