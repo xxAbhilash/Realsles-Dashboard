@@ -92,6 +92,43 @@ export interface PaymentMethod {
   updated_at: string;
 }
 
+// Performance Types
+export interface PerformanceByMode {
+  mode_name: string;
+  session_count: number;
+  average_objection_handling: number | null;
+  average_adaptability: number | null;
+  average_overall_score: number | null;
+  average_discovery: number | null;
+  average_solution_fit: number | null;
+  average_engagement_level: number | null;
+  average_communication_level: number | null;
+  average_create_interest?: number | null;
+  average_cross_selling?: number | null;
+  average_sale_closing?: number | null;
+  average_persuasiveness?: number | null;
+}
+
+export interface MemberPerformance {
+  member_id: string;
+  user_id: string;
+  user?: {
+    user_id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+  };
+  performance_by_mode: PerformanceByMode[];
+  overall_average_score: number;
+}
+
+export interface TeamPerformance {
+  company_team_id: string;
+  name: string;
+  team_average_score: number;
+  members: MemberPerformance[];
+}
+
 // Root State Type
 export interface RootState {
   auth: AuthState;

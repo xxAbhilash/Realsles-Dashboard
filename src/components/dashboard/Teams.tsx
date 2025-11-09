@@ -4,11 +4,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Users, Plus, ChevronDown, Building2, TrendingUp, Calendar, User, BarChart3, Search, X, ArrowLeft, Check, Edit, Trash2 } from "lucide-react";
+import { Users, Plus, ChevronDown, Building2, TrendingUp, Calendar, User, BarChart3, Search, X, ArrowLeft, Check, Edit, Trash2, FileText, Info } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { apis } from "@/utils/apis";
 import { useApi } from "@/hooks/useApi";
@@ -102,6 +103,8 @@ export function Teams() {
   const [isAddingMembers, setIsAddingMembers] = useState(false);
   const [teamMembers, setTeamMembers] = useState<number[]>([]);
   const [teamMembersGraph, setTeamMembersGraph]: any = useState<object>({});
+  const [selectedMode, setSelectedMode] = useState<'closing' | 'discovering' | 'prospecting'>('closing');
+  const [modeIds, setModeIds] = useState<Record<string, string>>({});
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editTeamData, setEditTeamData] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -111,7 +114,21 @@ export function Teams() {
   const [deletingMemberId, setDeletingMemberId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectMember, setSelectMember] = useState("")
+  const [selectedGraphMember, setSelectedGraphMember] = useState<string | null>(null);
+  const [isRefreshingMembers, setIsRefreshingMembers] = useState(false);
   const [data, setData]: any = useState([]);
+  const [isAssignScenarioDialogOpen, setIsAssignScenarioDialogOpen] = useState(false);
+  const [selectedMemberForScenario, setSelectedMemberForScenario] = useState<any>(null);
+  const [scenarioData, setScenarioData] = useState({
+    mode: "",
+    persona: ""
+  });
+  const [modesData, setModesData] = useState<any[]>([]);
+  const [personasData, setPersonasData] = useState<any[]>([]);
+  const [isAssigningScenario, setIsAssigningScenario] = useState(false);
+  const [isPersonaDetailsOpen, setIsPersonaDetailsOpen] = useState(false);
+  const [selectedPersonaDetails, setSelectedPersonaDetails] = useState<any>(null);
+  const [loadingPersonaDetails, setLoadingPersonaDetails] = useState(false);
 
   console.log(teamMembers, data, "teamMembers__")
   // Add state for selected mode
@@ -150,7 +167,9 @@ export function Teams() {
   const handleBackToOverview = () => {
     setViewMode("overview");
     setSelectedTeam(null);
-    setTeamMembers([])
+    setTeamMembers([]);
+    // Refresh teams and companies data when going back to overview
+    getTeams();
   };
 
   const getTeams = async () => {
@@ -159,6 +178,8 @@ export function Teams() {
       let data = await Get(`${company_teams}manager/${user?.user_id}`)
       if (data?.length) {
         setTeams(data)
+        // Refresh companies data to ensure company names are available
+        await getCompaniesById();
         setLoading(false)
       }
     } catch (error) {
@@ -173,6 +194,9 @@ export function Teams() {
       let data = await Get(`${sales_companies}manager/${user?.user_id}`);
       if (data?.length) {
         setCompaniesData(data)
+      } else {
+        // Ensure we set empty array if no data, don't clear existing data unnecessarily
+        setCompaniesData([])
       }
     } catch (error) {
       console.log(error, "_error_")
@@ -181,30 +205,116 @@ export function Teams() {
   }
 
   const getCompanyTeamMembers = async () => {
+    // Prevent concurrent calls
+    if (isRefreshingMembers) return;
+    
+    setIsRefreshingMembers(true);
     try {
       let data = await Get(`${company_teams_members}team/${selectedTeam?.company_team_id}`);
       if (data?.length) {
-        setTeamMembers(data)
+        // Deduplicate members by member_id and user_id to prevent duplicates
+        const uniqueMembers = [];
+        const seenMemberIds = new Set();
+        const seenUserIds = new Set();
+        const seenEmails = new Set();
+        
+        for (const member of data) {
+          const memberId = member.member_id;
+          const userId = member.user?.user_id || member.user_id;
+          const email = member.user?.email || member.email;
+          
+          // Check if we've seen this member by member_id, user_id, or email
+          const isDuplicate = 
+            (memberId && seenMemberIds.has(memberId)) ||
+            (userId && seenUserIds.has(userId)) ||
+            (email && seenEmails.has(email));
+          
+          if (!isDuplicate) {
+            if (memberId) seenMemberIds.add(memberId);
+            if (userId) seenUserIds.add(userId);
+            if (email) seenEmails.add(email);
+            uniqueMembers.push(member);
+          }
+        }
+        
+        // Set unique members (deduplication already handled above)
+        setTeamMembers(uniqueMembers);
       } else {
         setTeamMembers([])
       }
     } catch (error) {
       console.log(error, "_error_")
-      showToast.error("Failed to fetch companies. Please try again.");
+      showToast.error("Failed to fetch team members. Please try again.");
+    } finally {
+      setIsRefreshingMembers(false);
     }
   }
 
   const getCompanyTeamMembersGraph = async () => {
+    if (!selectedTeam?.company_team_id || !modeIds[selectedMode]) {
+      setTeamMembersGraph({});
+      return;
+    }
     try {
-      let data = await Get(`${company_teams}${selectedTeam?.company_team_id}/monthly-trend?months_back=6`);
+      let data = await Get(`${company_teams}${selectedTeam?.company_team_id}/mode/${modeIds[selectedMode]}/members-performance?months_back=6`);
       if (data?.company_team_id) {
+        // Deduplicate members by member_id and user_id to prevent duplicates
+        if (Array.isArray(data.members)) {
+          const uniqueMembers = [];
+          const seenMemberIds = new Set();
+          const seenUserIds = new Set();
+          const seenEmails = new Set();
+          
+          for (const member of data.members) {
+            const memberId = member.member_id;
+            const userId = member.user_id;
+            const email = member.user_name; // user_name might be unique identifier
+            
+            // Check if we've seen this member by member_id, user_id, or name
+            const isDuplicate = 
+              (memberId && seenMemberIds.has(memberId)) ||
+              (userId && seenUserIds.has(userId)) ||
+              (email && seenEmails.has(email));
+            
+            if (!isDuplicate) {
+              if (memberId) seenMemberIds.add(memberId);
+              if (userId) seenUserIds.add(userId);
+              if (email) seenEmails.add(email);
+              uniqueMembers.push(member);
+            }
+          }
+          
+          data.members = uniqueMembers;
+        }
         setTeamMembersGraph(data)
       } else {
         setTeamMembersGraph({})
       }
     } catch (error) {
       console.log(error, "_error_")
-      showToast.error("Failed to fetch companies. Please try again.");
+      showToast.error("Failed to fetch team performance data. Please try again.");
+    }
+  }
+
+  const fetchInteractionModes = async () => {
+    try {
+      const modes = await Get(apis.interaction_modes);
+      if (Array.isArray(modes)) {
+        const modeMap: Record<string, string> = {};
+        modes.forEach((mode: any) => {
+          const modeName = (mode.name || mode.mode_name || '').toLowerCase();
+          if (modeName.includes('closing')) {
+            modeMap['closing'] = mode.mode_id || mode.id;
+          } else if (modeName.includes('discovering') || modeName.includes('discovery')) {
+            modeMap['discovering'] = mode.mode_id || mode.id;
+          } else if (modeName.includes('prospecting') || modeName.includes('prospect')) {
+            modeMap['prospecting'] = mode.mode_id || mode.id;
+          }
+        });
+        setModeIds(modeMap);
+      }
+    } catch (error) {
+      console.log(error, "_error_fetching_modes")
     }
   }
 
@@ -262,22 +372,25 @@ export function Teams() {
         console.log("Adding member to team:", memberData);
 
         let data = await Post(company_teams_members, memberData);
-        if (data?.member_id) {
-          getCompanyTeamMembers()
-          getCompanyTeamMembersGraph()
+        if (!data?.member_id) {
+          console.error("Failed to add member:", memberId);
         }
 
         // Optional: Add a small delay between requests to avoid overwhelming the server
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
+      // Refresh team members and graph data only once after all members are added
+      await getCompanyTeamMembers();
+      await getCompanyTeamMembersGraph();
+      
+      // Refresh available members to update the filtered list
+      await getAvailableMembers();
+
       showToast.success(`${selectedMembersForTeam.length} member(s) added to team successfully!`);
       setSelectedMembersForTeam([]);
       setMemberSearchQuery("");
       setAddteamMember(false);
-
-      // Refresh team data
-      // await getTeams();
     } catch (error) {
       console.error("Error adding members to team:", error);
       showToast.error("Failed to add members to team");
@@ -314,11 +427,12 @@ export function Teams() {
     try {
       let data = await Get(`${company_teams}sales-company/${selectedTeam?.sales_company_id}`);
       if (data?.length) {
-        setCompaniesData(data)
+        // Don't overwrite companiesData, it should be fetched separately
+        // This function is for getting teams by company, not companies data
       }
     } catch (error) {
       console.log(error, "_error_")
-      showToast.error("Failed to fetch companies. Please try again.");
+      showToast.error("Failed to fetch teams. Please try again.");
     }
   }
 
@@ -350,7 +464,7 @@ export function Teams() {
         setSearchQuery("");
         setIsCreateDialogOpen(false);
 
-        // Refresh teams list
+        // Refresh teams list and companies data
         await getTeams();
 
         showToast.success("Team created successfully!");
@@ -391,6 +505,7 @@ export function Teams() {
       if (response) {
         setIsEditDialogOpen(false);
         setEditTeamData(null);
+        // Refresh teams and companies data
         await getTeams();
         showToast.success("Team updated successfully!");
       }
@@ -410,6 +525,7 @@ export function Teams() {
       showToast.success("Team deleted successfully!");
       setIsDeleteDialogOpen(false);
       setDeletingTeam(null);
+      // Refresh teams and companies data
       await getTeams();
       // }
     } catch (error) {
@@ -421,10 +537,84 @@ export function Teams() {
   const deleteTeamMember = async (member_id) => {
     try {
       let data = await Delete(`${company_teams_members}${member_id}`)
-      getCompanyTeamMembers()
-      getCompanyTeamMembersGraph()
+      // Refresh team members and graph data after deletion
+      await getCompanyTeamMembers()
+      await getCompanyTeamMembersGraph()
+      // Refresh available members to update the filtered list
+      await getAvailableMembers()
     } catch (error) {
       console.log(error, "_error_")
+      showToast.error("Failed to delete team member");
+    }
+  }
+
+  const handleGiveScenario = async (member: any) => {
+    setSelectedMemberForScenario(member);
+    setIsAssignScenarioDialogOpen(true);
+    // Fetch modes and personas when dialog opens
+    await fetchModesAndPersonas();
+  }
+
+  const fetchModesAndPersonas = async () => {
+    try {
+      // Fetch modes
+      const modes = await Get(apis.interaction_modes);
+      if (Array.isArray(modes)) {
+        setModesData(modes);
+      }
+
+      // Fetch personas
+      const personas = await Get(apis.ai_personas);
+      if (Array.isArray(personas)) {
+        setPersonasData(personas);
+      }
+    } catch (error) {
+      console.error("Error fetching modes and personas:", error);
+      showToast.error("Failed to load modes and personas");
+    }
+  }
+
+  const handleAssignScenario = async () => {
+    if (!scenarioData.mode || !scenarioData.persona) {
+      showToast.error("Please select both mode and persona");
+      return;
+    }
+
+    setIsAssigningScenario(true);
+    try {
+      // TODO: Implement the actual API call for assigning scenario
+      // This will depend on your backend endpoint
+      console.log("Assigning scenario:", {
+        member: selectedMemberForScenario,
+        mode: scenarioData.mode,
+        persona: scenarioData.persona
+      });
+
+      showToast.success(`Scenario assigned to ${selectedMemberForScenario?.user?.first_name} ${selectedMemberForScenario?.user?.last_name}`);
+      
+      // Reset and close dialog
+      setScenarioData({ mode: "", persona: "" });
+      setIsAssignScenarioDialogOpen(false);
+      setSelectedMemberForScenario(null);
+    } catch (error) {
+      console.error("Error assigning scenario:", error);
+      showToast.error("Failed to assign scenario");
+    } finally {
+      setIsAssigningScenario(false);
+    }
+  }
+
+  const fetchPersonaDetails = async (personaId: string) => {
+    setLoadingPersonaDetails(true);
+    try {
+      const details = await Get(`${apis.ai_persona_by_id}${personaId}`);
+      setSelectedPersonaDetails(details);
+      setIsPersonaDetailsOpen(true);
+    } catch (error) {
+      console.error("Error fetching persona details:", error);
+      showToast.error("Failed to load persona details");
+    } finally {
+      setLoadingPersonaDetails(false);
     }
   }
 
@@ -443,12 +633,26 @@ export function Teams() {
     }
   }, [selectedTeam?.sales_company_id])
 
+  // Ensure companies data is loaded when in overview mode
   useEffect(() => {
-    if (selectedTeam?.company_team_id) {
+    if (viewMode === "overview" && user?.user_id) {
+      // Always refresh companies data when returning to overview to ensure it's up to date
+      getCompaniesById();
+    }
+  }, [viewMode, user?.user_id])
+
+  useEffect(() => {
+    if (selectedTeam?.company_team_id && modeIds[selectedMode]) {
       getCompanyTeamMembers()
       getCompanyTeamMembersGraph()
+      // Reset graph selection when team or mode changes
+      setSelectedGraphMember(null);
     }
-  }, [selectedTeam?.company_team_id])
+  }, [selectedTeam?.company_team_id, selectedMode, modeIds[selectedMode]])
+
+  useEffect(() => {
+    fetchInteractionModes();
+  }, [])
 
   useEffect(() => {
     let isCancelled = false;
@@ -501,21 +705,71 @@ export function Teams() {
     );
   };
 
-  // Prepare growthData for all modes
-  const growthData = (teamMembersGraph?.monthly_trends || []).map((trend: any) => {
-    const closingRaw = trend.modes?.closing?.average_score;
-    const prospectingRaw = trend.modes?.prospecting?.average_score;
-    const discoveringRaw = trend.modes?.discovering?.average_score;
-    const scores = [closingRaw, prospectingRaw, discoveringRaw].filter((v) => typeof v === 'number') as number[];
-    const overall = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
-    return {
-      month: moment(trend.month).format("MMM"),
-      prospecting: typeof prospectingRaw === 'number' ? prospectingRaw : 0,
-      discovering: typeof discoveringRaw === 'number' ? discoveringRaw : 0,
-      closing: typeof closingRaw === 'number' ? closingRaw : 0,
-      overall,
-    };
-  });
+  // Prepare growthData for members performance by mode
+  const prepareGrowthData = () => {
+    if (!teamMembersGraph?.members || !Array.isArray(teamMembersGraph.members)) {
+      return [];
+    }
+
+    // Get all unique months from all members
+    const allMonths = new Set<string>();
+    teamMembersGraph.members.forEach((member: any) => {
+      if (Array.isArray(member.monthly_scores)) {
+        member.monthly_scores.forEach((score: any) => {
+          if (score.month) {
+            allMonths.add(score.month);
+          }
+        });
+      }
+    });
+
+    // Sort months chronologically
+    const sortedMonths = Array.from(allMonths).sort((a, b) => {
+      const dateA = new Date(a + '-01');
+      const dateB = new Date(b + '-01');
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    // Create data structure for chart
+    const chartData: any[] = sortedMonths.map(month => {
+      const dataPoint: any = {
+        month: moment(month + '-01').format("MMM"),
+        monthKey: month,
+      };
+
+      // Add each member's score for this month
+      teamMembersGraph.members.forEach((member: any) => {
+        const memberKey = member.user_name || `Member ${member.member_id}`;
+        const monthlyScore = member.monthly_scores?.find((s: any) => s.month === month);
+        
+        // Handle different scenarios:
+        // 1. If average_overall_score is a number (including 0), use it
+        // 2. If average_overall_score is null/undefined but session_count exists and is 0, use 0
+        // 3. If no monthly score entry exists for this month, use null
+        if (monthlyScore) {
+          if (typeof monthlyScore.average_overall_score === 'number') {
+            // Use the actual score value (including 0)
+            dataPoint[memberKey] = monthlyScore.average_overall_score;
+          } else if (monthlyScore.session_count !== undefined && monthlyScore.session_count === 0) {
+            // If session_count is 0, show 0 on the graph so line connects
+            dataPoint[memberKey] = 0;
+          } else {
+            // If no score data available, use null (line will not connect)
+            dataPoint[memberKey] = null;
+          }
+        } else {
+          // No data point for this month - use null
+          dataPoint[memberKey] = null;
+        }
+      });
+
+      return dataPoint;
+    });
+
+    return chartData;
+  };
+
+  const growthData = prepareGrowthData();
 
   console.log(growthData, "growthData")
 
@@ -756,9 +1010,12 @@ export function Teams() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {teamMembers?.length ? teamMembers.map((member: any) => (
+                {teamMembers?.length ? teamMembers.map((member: any, index: number) => {
+                  // Use member_id as primary key, fallback to index if not available
+                  const uniqueKey = member?.member_id || member?.user?.user_id || `member-${index}`;
+                  return (
                   <div
-                    key={member?.user?.company_id}
+                      key={uniqueKey}
                     className="w-full flex items-center justify-between gap-4 p-4 border rounded-lg"
                   >
                     <div
@@ -792,66 +1049,236 @@ export function Teams() {
                         <div className="text-sm text-muted-foreground">{member?.user?.sessions} sessions</div>
                       </div>
                     </div>
-                    <Button
-                      title="Delete"
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => { setDeletingMemberId(member?.member_id); setIsDeleteMemberDialogOpen(true); }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        title="Assign Scenario"
+                        variant="outline"
+                        size="sm"
+                        className="text-black hover:text-black"
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          handleGiveScenario(member); 
+                        }}
+                      >
+                        <FileText className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        title="Delete"
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          setDeletingMemberId(member?.member_id); 
+                          setIsDeleteMemberDialogOpen(true); 
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
-                )) : null}
+                  );
+                }) : null}
               </CardContent>
             </Card>
 
             {/* Right Side - Growth Chart */}
             <Card>
               <CardHeader className="">
-                <CardTitle className="flex items-center gap-2 justify-between">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between mb-4">
+                  <CardTitle className="flex items-center gap-2">
                     <TrendingUp className="w-5 h-5" />
                     Team Performance Growth
-                  </div>
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Select value={selectedMode} onValueChange={(value: 'closing' | 'discovering' | 'prospecting') => setSelectedMode(value)}>
+                      <SelectTrigger className="w-[140px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="closing">Closing</SelectItem>
+                        <SelectItem value="discovering">Discovering</SelectItem>
+                        <SelectItem value="prospecting">Prospecting</SelectItem>
+                      </SelectContent>
+                    </Select>
                   <Badge className="!rounded-sm">
                     <p className="text-sm">{moment().format("MMM Do YY")}</p>
                   </Badge>
-                </CardTitle>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="h-80">
+                {growthData.length > 0 && teamMembersGraph?.members?.length > 0 ? (
+                  <>
+                    <div className="h-80" onClick={() => setSelectedGraphMember(null)}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={growthData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis dataKey="month" className="text-muted-foreground" />
                       <YAxis domain={[0, 100]} className="text-muted-foreground" />
                       <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }} />
-                      <Line type="monotone" dataKey="prospecting" name="Prospecting" stroke="#3b82f6" strokeWidth={3} dot={{ fill: '#3b82f6', strokeWidth: 2, r: 6 }} activeDot={{ r: 8, stroke: '#3b82f6', strokeWidth: 2 }} isAnimationActive={false} animationBegin={0} animationDuration={8000} animationEasing="linear" />
-                      <Line type="monotone" dataKey="discovering" name="Discovering" stroke="#fe4444" strokeWidth={3} dot={{ fill: '#fe4444', strokeWidth: 2, r: 6 }} activeDot={{ r: 8, stroke: '#fe4444', strokeWidth: 2 }} isAnimationActive={false} animationBegin={0} animationDuration={8000} animationEasing="linear" />
-                      <Line type="monotone" dataKey="closing" name="Closing" stroke="#22c55e" strokeWidth={3} dot={{ fill: '#22c55e', strokeWidth: 2, r: 6 }} activeDot={{ r: 8, stroke: '#22c55e', strokeWidth: 2 }} isAnimationActive={false} animationBegin={0} animationDuration={8000} animationEasing="linear" />
-                      <Line type="monotone" dataKey="overall" name="Overall" stroke="#FFD600" strokeWidth={3} dot={{ r: 5, fill: '#FFD600' }} activeDot={{ r: 8, stroke: '#FFD600', strokeWidth: 2 }} isAnimationActive={false} animationBegin={0} animationDuration={8000} animationEasing="linear" />
-                      <Legend />
+                          {teamMembersGraph.members.map((member: any, index: number) => {
+                            const memberKey = member.user_name || `Member ${member.member_id}`;
+                            // Generate colors for each member - using a diverse color palette
+                            const colors = [
+                              '#3b82f6', // Blue
+                              '#22c55e', // Green
+                              '#ef4444', // Red
+                              '#f59e0b', // Amber
+                              '#8b5cf6', // Purple
+                              '#ec4899', // Pink
+                              '#06b6d4', // Cyan
+                              '#84cc16', // Lime
+                              '#f97316', // Orange
+                              '#6366f1'  // Indigo
+                            ];
+                            const color = colors[index % colors.length];
+                            const isSelected = selectedGraphMember === memberKey;
+                            const opacity = isSelected ? 1 : selectedGraphMember ? 0.3 : 1;
+                            
+                            return (
+                              <Line
+                                key={member.member_id}
+                                type="monotone"
+                                dataKey={memberKey}
+                                name={memberKey}
+                                stroke={color}
+                                strokeWidth={isSelected ? 4 : 3}
+                                strokeOpacity={opacity}
+                                dot={{ fill: color, strokeWidth: 2, r: isSelected ? 7 : 6, fillOpacity: opacity }}
+                                activeDot={{ r: 8, stroke: color, strokeWidth: 2 }}
+                                isAnimationActive={false}
+                                animationBegin={0}
+                                animationDuration={8000}
+                                animationEasing="linear"
+                                connectNulls={true}
+                              />
+                            );
+                          })}
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
 
-                {/* Performance Summary */}
-                <div className="grid grid-cols-3 gap-4 mt-6 pt-4 border-t">
+                    {/* Performance Summary - Commented out */}
+                    {/* <div className="grid grid-cols-3 gap-4 mt-6 pt-4 border-t">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-primary">{teamMembersGraph?.monthly_trends?.length ? (teamMembersGraph.monthly_trends[teamMembersGraph.monthly_trends.length - 1]?.modes?.closing?.average_score ?? 0) : 0}</div>
+                        <div className="text-2xl font-bold text-primary">
+                          {(() => {
+                            const allScores: number[] = [];
+                            teamMembersGraph.members.forEach((member: any) => {
+                              if (Array.isArray(member.monthly_scores) && member.monthly_scores.length > 0) {
+                                const lastScore = member.monthly_scores[member.monthly_scores.length - 1]?.average_overall_score;
+                                if (typeof lastScore === 'number') {
+                                  allScores.push(lastScore);
+                                }
+                              }
+                            });
+                            const avg = allScores.length > 0 
+                              ? (allScores.reduce((a, b) => a + b, 0) / allScores.length).toFixed(1)
+                              : '0';
+                            return avg;
+                          })()}
+                        </div>
                     <div className="text-sm text-muted-foreground">Current Avg</div>
                   </div>
                   <div className="text-center flex flex-col items-center">
-                    <div className="text-2xl font-bold text-success">{teamMembersGraph?.monthly_trends?.length ? `+${((teamMembersGraph.monthly_trends[teamMembersGraph.monthly_trends.length - 1]?.modes?.closing?.average_score ?? 0) - (teamMembersGraph.monthly_trends[0]?.modes?.closing?.average_score ?? 0)).toFixed(1)}` : 0}</div>
+                        <div className="text-2xl font-bold text-success">
+                          {(() => {
+                            const firstScores: number[] = [];
+                            const lastScores: number[] = [];
+                            teamMembersGraph.members.forEach((member: any) => {
+                              if (Array.isArray(member.monthly_scores) && member.monthly_scores.length > 0) {
+                                const firstScore = member.monthly_scores.find((s: any) => typeof s.average_overall_score === 'number')?.average_overall_score;
+                                const lastScore = member.monthly_scores[member.monthly_scores.length - 1]?.average_overall_score;
+                                if (typeof firstScore === 'number') firstScores.push(firstScore);
+                                if (typeof lastScore === 'number') lastScores.push(lastScore);
+                              }
+                            });
+                            const firstAvg = firstScores.length > 0 ? firstScores.reduce((a, b) => a + b, 0) / firstScores.length : 0;
+                            const lastAvg = lastScores.length > 0 ? lastScores.reduce((a, b) => a + b, 0) / lastScores.length : 0;
+                            const growth = lastAvg - firstAvg;
+                            return growth >= 0 ? `+${growth.toFixed(1)}` : growth.toFixed(1);
+                          })()}
+                        </div>
                     <div className="text-sm text-muted-foreground">Growth</div>
                   </div>
                   <div className="text-center">
-                    {/* <div className="text-2xl font-bold text-warning">{growthData.reduce((acc, cur) => acc + (cur.closing || 0), 0)}</div> */}
-                    <div className="text-2xl font-bold text-warning">{teamMembersGraph?.total_sessions_analyzed || 0}</div>
+                        <div className="text-2xl font-bold text-warning">
+                          {(() => {
+                            let totalSessions = 0;
+                            teamMembersGraph.members.forEach((member: any) => {
+                              if (Array.isArray(member.monthly_scores)) {
+                                member.monthly_scores.forEach((score: any) => {
+                                  totalSessions += Number(score.session_count) || 0;
+                                });
+                              }
+                            });
+                            return totalSessions;
+                          })()}
+                        </div>
                     <div className="text-sm text-muted-foreground">Total Sessions</div>
                   </div>
-                </div>
+                    </div> */}
+
+                    {/* Members Legend - Shows all users with their graph colors */}
+                    <div className="mt-6 pt-4 border-t">
+                      <div className="flex flex-wrap gap-3 justify-center items-center">
+                        {teamMembersGraph.members.map((member: any, index: number) => {
+                          const memberKey = member.user_name || `Member ${member.member_id}`;
+                          const colors = [
+                            '#3b82f6', // Blue
+                            '#22c55e', // Green
+                            '#ef4444', // Red
+                            '#f59e0b', // Amber
+                            '#8b5cf6', // Purple
+                            '#ec4899', // Pink
+                            '#06b6d4', // Cyan
+                            '#84cc16', // Lime
+                            '#f97316', // Orange
+                            '#6366f1'  // Indigo
+                          ];
+                          const color = colors[index % colors.length];
+                          const isSelected = selectedGraphMember === memberKey;
+                          
+                          return (
+                            <div 
+                              key={member.member_id} 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedGraphMember(isSelected ? null : memberKey);
+                              }}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all ${
+                                isSelected 
+                                  ? 'bg-primary/10 border-primary shadow-md scale-105' 
+                                  : 'bg-muted/50 border-border hover:bg-muted'
+                              }`}
+                            >
+                              <div 
+                                className={`w-3 h-3 rounded-full flex-shrink-0 transition-all ${
+                                  isSelected ? 'ring-2 ring-primary ring-offset-1' : ''
+                                }`}
+                                style={{ backgroundColor: color }}
+                              />
+                              <span className={`text-sm font-medium whitespace-nowrap ${
+                                isSelected ? 'text-primary font-semibold' : 'text-foreground'
+                              }`}>
+                                {memberKey}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="h-80 flex items-center justify-center text-muted-foreground">
+                    <div className="text-center">
+                      <TrendingUp className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                      <p>No performance data available</p>
+                      <p className="text-sm">Select a mode to view member trends</p>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -880,9 +1307,7 @@ export function Teams() {
                       await deleteTeamMember(deletingMemberId);
                       setDeletingMemberId(null);
                       setIsDeleteMemberDialogOpen(false);
-                      // Refresh the member list
-                      getCompanyTeamMembers();
-                      getCompanyTeamMembersGraph()
+                      // Note: deleteTeamMember already refreshes the data, no need to call again
                     }
                   }}
                 >
@@ -891,6 +1316,196 @@ export function Teams() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+
+          {/* Assign Scenario Dialog */}
+          <Dialog open={isAssignScenarioDialogOpen} onOpenChange={(open) => {
+            setIsAssignScenarioDialogOpen(open);
+            if (!open) {
+              setSelectedMemberForScenario(null);
+              setScenarioData({ mode: "", persona: "" });
+            }
+          }}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Assign Scenario</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                {selectedMemberForScenario && (
+                  <div className="p-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground mb-1">Assigning scenario to:</p>
+                    <p className="font-semibold text-lg">
+                      {selectedMemberForScenario?.user?.first_name} {selectedMemberForScenario?.user?.last_name}
+                    </p>
+                    <p className="text-sm text-muted-foreground">{selectedMemberForScenario?.user?.email}</p>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="scenario-mode">Mode *</Label>
+                  <Select
+                    value={scenarioData.mode}
+                    onValueChange={(value) => setScenarioData(prev => ({ ...prev, mode: value }))}
+                  >
+                    <SelectTrigger id="scenario-mode" className={!scenarioData.mode ? "border-red-500" : ""}>
+                      <SelectValue placeholder="Select mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {modesData.map((mode) => (
+                        <SelectItem key={mode?.mode_id || mode?.id} value={(mode?.mode_id || mode?.id).toString()}>
+                          {mode?.name || mode?.mode_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="scenario-persona">Persona *</Label>
+                  <Select
+                    value={scenarioData.persona}
+                    onValueChange={(value) => setScenarioData(prev => ({ ...prev, persona: value }))}
+                  >
+                    <SelectTrigger id="scenario-persona" className={!scenarioData.persona ? "border-red-500" : ""}>
+                      <SelectValue placeholder="Select persona" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {personasData.map((persona) => (
+                        <div key={persona?.persona_id || persona?.id} className="relative group">
+                          <SelectItem 
+                            value={(persona?.persona_id || persona?.id).toString()}
+                            className="pr-10"
+                          >
+                            {persona?.name || persona?.persona_name}
+                          </SelectItem>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0 text-black hover:text-black"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              fetchPersonaDetails(persona?.persona_id || persona?.id);
+                            }}
+                          >
+                            <Info className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Button
+                  className="w-full"
+                  onClick={handleAssignScenario}
+                  disabled={isAssigningScenario || !scenarioData.mode || !scenarioData.persona}
+                >
+                  {isAssigningScenario ? "Assigning..." : "Assign Scenario"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Persona Details Dialog */}
+          <Dialog open={isPersonaDetailsOpen} onOpenChange={setIsPersonaDetailsOpen}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Persona Details</DialogTitle>
+              </DialogHeader>
+              {loadingPersonaDetails ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-muted-foreground">Loading persona details...</div>
+                </div>
+              ) : selectedPersonaDetails ? (
+                <div className="space-y-6">
+                  {/* Profile Section */}
+                  <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
+                    <Avatar className="h-20 w-20">
+                      <AvatarImage src={selectedPersonaDetails?.profile_pic} alt={selectedPersonaDetails?.name} />
+                      <AvatarFallback className="text-xl">
+                        {selectedPersonaDetails?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <h3 className="text-2xl font-bold">{selectedPersonaDetails?.name}</h3>
+                      <Badge variant="secondary" className="mt-1">
+                        {selectedPersonaDetails?.gender}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Details Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Industry */}
+                    {selectedPersonaDetails?.industry && (
+                      <div className="p-4 border rounded-lg">
+                        <p className="text-sm text-muted-foreground mb-1">Industry</p>
+                        <p className="font-semibold">{selectedPersonaDetails?.industry?.name}</p>
+                      </div>
+                    )}
+
+                    {/* AI Role */}
+                    {selectedPersonaDetails?.ai_role && (
+                      <div className="p-4 border rounded-lg">
+                        <p className="text-sm text-muted-foreground mb-1">Role</p>
+                        <p className="font-semibold">{selectedPersonaDetails?.ai_role?.name}</p>
+                      </div>
+                    )}
+
+                    {/* Geography */}
+                    {selectedPersonaDetails?.geography && (
+                      <div className="p-4 border rounded-lg">
+                        <p className="text-sm text-muted-foreground mb-1">Geography</p>
+                        <p className="font-semibold uppercase">{selectedPersonaDetails?.geography}</p>
+                      </div>
+                    )}
+
+                    {/* Plant Size Impact */}
+                    {selectedPersonaDetails?.plant_size_impact && (
+                      <div className="p-4 border rounded-lg">
+                        <p className="text-sm text-muted-foreground mb-1">Plant Size</p>
+                        <p className="font-semibold">{selectedPersonaDetails?.plant_size_impact?.name}</p>
+                      </div>
+                    )}
+
+                    {/* Manufacturing Model */}
+                    {selectedPersonaDetails?.manufacturing_model && (
+                      <div className="p-4 border rounded-lg">
+                        <p className="text-sm text-muted-foreground mb-1">Manufacturing Model</p>
+                        <p className="font-semibold">{selectedPersonaDetails?.manufacturing_model?.name}</p>
+                      </div>
+                    )}
+
+                    {/* Company Size */}
+                    {selectedPersonaDetails?.company_size_new && (
+                      <div className="p-4 border rounded-lg">
+                        <p className="text-sm text-muted-foreground mb-1">Company Size</p>
+                        <p className="font-semibold">{selectedPersonaDetails?.company_size_new?.name}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Products */}
+                  {selectedPersonaDetails?.persona_products && selectedPersonaDetails?.persona_products?.length > 0 && (
+                    <div className="p-4 border rounded-lg">
+                      <p className="text-sm text-muted-foreground mb-2">Products</p>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedPersonaDetails?.persona_products?.map((personaProduct: any, index: number) => (
+                          <Badge key={index} variant="outline" className="text-sm">
+                            {personaProduct?.product?.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  No persona details available
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
         </div >
       );
     }
@@ -954,128 +1569,152 @@ export function Teams() {
                                       <span className="font-medium text-base text-gray-700">{member?.user?.first_name} {member?.user?.last_name}</span>
                                       <span className="text-bse text-gray-500">{member?.user?.email}</span>
                                     </div>
-                                  </div> */}
-                                  <div>
-                                    {/* Member Overall Score */}
-                                    <div className="space-y-3 mb-6">
-                                      <div className="flex justify-between items-center">
-                                        <span className="text-base font-medium">Overall Score</span>
-                                        <span className="text-bse text-black font-bold">{(member?.overall_average_score ?? 0).toFixed(1)}/100</span>
-                                      </div>
-                                      <Progress value={member?.overall_average_score ?? 0} className="h-2.5" />
-                                    </div>
-                                    {/* Performance by Mode (already accordionized) */}
-                                    {Array.isArray(member?.performance_by_mode) && (
-                                      <div className="ml-4 space-y-6">
-                                        {member.performance_by_mode.map((mode, modeIdx) => {
-                                          const sessionCount = mode?.session_count || 0;
-                                          const overallScore = mode?.average_overall_score ?? 0;
-                                          
-                                          return (
-                                            <div key={modeIdx} className="pb-4 border-b border-gray-200 last:border-b-0 last:pb-0">
-                                              <div className="mb-4">
-                                                <div className="flex justify-between items-center w-full">
-                                                  <span className="text-base font-medium capitalize">{mode?.mode_name}</span>
-                                                  <span className="text-bse text-gray-600">{sessionCount} sessions</span>
-                                                </div>
-                                              </div>
-                                              <div>
-                                                {sessionCount === 0 ? (
-                                                  <div className="text-center py-6 text-muted-foreground">
-                                                    <span className="text-base">No Sessions Completed</span>
+                                                  </div> */}
+                                                  <div>
+                                                    {/* Performance by Mode (Accordion) */}
+                                                    {Array.isArray(member?.performance_by_mode) && (
+                                                      <Accordion type="single" collapsible defaultValue={`mode-0`} className="w-full">
+                                                        {member.performance_by_mode.map((mode, modeIdx) => {
+                                                          const sessionCount = mode?.session_count || 0;
+                                                          const overallScore = mode?.average_overall_score ?? 0;
+                                                          
+                                                          return (
+                                                            <AccordionItem key={modeIdx} value={`mode-${modeIdx}`}>
+                                                              <AccordionTrigger className="hover:no-underline">
+                                                                <div className="flex justify-between items-center w-full pr-4">
+                                                                  <span className="text-base font-medium capitalize">{mode?.mode_name}</span>
+                                                                  <span className="text-sm text-gray-600">{sessionCount} sessions</span>
+                                                                </div>
+                                                              </AccordionTrigger>
+                                                              <AccordionContent>
+                                                                <div className="pt-2 pb-4">
+                                                                  {sessionCount === 0 ? (
+                                                                    <div className="text-center py-6 text-muted-foreground">
+                                                                      <span className="text-base">No Sessions Completed</span>
+                                                                    </div>
+                                                                  ) : (
+                                                                    <>
+                                                                      {/* Mode Overall Score */}
+                                                                      <div className="space-y-2 mb-4">
+                                                                        <div className="flex justify-between items-center">
+                                                                          <span className="text-sm font-medium">Overall Score</span>
+                                                                          <span className="text-sm text-black font-bold">{overallScore.toFixed(1)}/100</span>
+                                                                        </div>
+                                                                        <Progress value={overallScore} className="h-2" />
+                                                                      </div>
+                                                                      {/* Individual Skills - Show only non-null skills */}
+                                                                      <div className="space-y-3 ml-2">
+                                                                        {/* Engagement Level */}
+                                                                        {mode?.average_engagement_level !== null && mode?.average_engagement_level !== undefined && (
+                                                                          <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                              <span className="text-sm">Engagement Level</span>
+                                                                              <span className="text-sm text-black">{(mode?.average_engagement_level ?? 0).toFixed(1)}/100</span>
+                                                                            </div>
+                                                                            <Progress value={mode?.average_engagement_level ?? 0} className="h-2" />
+                                                                          </div>
+                                                                        )}
+                                                                        {/* Communication Level */}
+                                                                        {mode?.average_communication_level !== null && mode?.average_communication_level !== undefined && (
+                                                                          <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                              <span className="text-sm">Communication Level</span>
+                                                                              <span className="text-sm text-black">{(mode?.average_communication_level ?? 0).toFixed(1)}/100</span>
+                                                                            </div>
+                                                                            <Progress value={mode?.average_communication_level ?? 0} className="h-2" />
+                                                                          </div>
+                                                                        )}
+                                                                        {/* Objection Handling */}
+                                                                        {mode?.average_objection_handling !== null && mode?.average_objection_handling !== undefined && (
+                                                                          <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                              <span className="text-sm">Objection Handling</span>
+                                                                              <span className="text-sm text-black">{(mode?.average_objection_handling ?? 0).toFixed(1)}/100</span>
+                                                                            </div>
+                                                                            <Progress value={mode?.average_objection_handling ?? 0} className="h-2" />
+                                                                          </div>
+                                                                        )}
+                                                                        {/* Adaptability */}
+                                                                        {mode?.average_adaptability !== null && mode?.average_adaptability !== undefined && (
+                                                                          <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                              <span className="text-sm">Adaptability</span>
+                                                                              <span className="text-sm text-black">{(mode?.average_adaptability ?? 0).toFixed(1)}/100</span>
+                                                                            </div>
+                                                                            <Progress value={mode?.average_adaptability ?? 0} className="h-2" />
+                                                                          </div>
+                                                                        )}
+                                                                        {/* Discovery */}
+                                                                        {mode?.average_discovery !== null && mode?.average_discovery !== undefined && (
+                                                                          <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                              <span className="text-sm">Discovery</span>
+                                                                              <span className="text-sm text-black">{(mode?.average_discovery ?? 0).toFixed(1)}/100</span>
+                                                                            </div>
+                                                                            <Progress value={mode?.average_discovery ?? 0} className="h-2" />
+                                                                          </div>
+                                                                        )}
+                                                                        {/* Solution Fit */}
+                                                                        {mode?.average_solution_fit !== null && mode?.average_solution_fit !== undefined && (
+                                                                          <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                              <span className="text-sm">Solution Fit</span>
+                                                                              <span className="text-sm text-black">{(mode?.average_solution_fit ?? 0).toFixed(1)}/100</span>
+                                                                            </div>
+                                                                            <Progress value={mode?.average_solution_fit ?? 0} className="h-2" />
+                                                                          </div>
+                                                                        )}
+                                                                        {/* Create Interest - typically for prospecting */}
+                                                                        {mode?.average_create_interest !== null && mode?.average_create_interest !== undefined && (
+                                                                          <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                              <span className="text-sm">Create Interest</span>
+                                                                              <span className="text-sm text-black">{(mode?.average_create_interest ?? 0).toFixed(1)}/100</span>
+                                                                            </div>
+                                                                            <Progress value={mode?.average_create_interest ?? 0} className="h-2" />
+                                                                          </div>
+                                                                        )}
+                                                                        {/* Cross Selling - typically for discovering */}
+                                                                        {mode?.average_cross_selling !== null && mode?.average_cross_selling !== undefined && (
+                                                                          <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                              <span className="text-sm">Cross Selling</span>
+                                                                              <span className="text-sm text-black">{(mode?.average_cross_selling ?? 0).toFixed(1)}/100</span>
+                                                                            </div>
+                                                                            <Progress value={mode?.average_cross_selling ?? 0} className="h-2" />
+                                                                          </div>
+                                                                        )}
+                                                                        {/* Sale Closing - typically for closing */}
+                                                                        {mode?.average_sale_closing !== null && mode?.average_sale_closing !== undefined && (
+                                                                          <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                              <span className="text-sm">Sale Closing</span>
+                                                                              <span className="text-sm text-black">{(mode?.average_sale_closing ?? 0).toFixed(1)}/100</span>
+                                                                            </div>
+                                                                            <Progress value={mode?.average_sale_closing ?? 0} className="h-2" />
+                                                                          </div>
+                                                                        )}
+                                                                        {/* Persuasiveness */}
+                                                                        {mode?.average_persuasiveness !== null && mode?.average_persuasiveness !== undefined && (
+                                                                          <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                              <span className="text-sm">Persuasiveness</span>
+                                                                              <span className="text-sm text-black">{(mode?.average_persuasiveness ?? 0).toFixed(1)}/100</span>
+                                                                            </div>
+                                                                            <Progress value={mode?.average_persuasiveness ?? 0} className="h-2" />
+                                                                          </div>
+                                                                        )}
+                                                                      </div>
+                                                                    </>
+                                                                  )}
+                                                                </div>
+                                                              </AccordionContent>
+                                                            </AccordionItem>
+                                                          );
+                                                        })}
+                                                      </Accordion>
+                                                    )}
                                                   </div>
-                                                ) : (
-                                                  <>
-                                                    {/* Mode Overall Score */}
-                                                    <div className="space-y-2 mb-4">
-                                                      <div className="flex justify-between items-center">
-                                                        <span className="text-bse">Overall</span>
-                                                        <span className="text-bse text-black font-bold">{overallScore.toFixed(1)}/100</span>
-                                                      </div>
-                                                      <Progress value={overallScore} className="h-2" />
-                                                    </div>
-                                                    {/* Individual Skills - Show all skills */}
-                                                    <div className="space-y-3 ml-2">
-                                                      <div className="space-y-2">
-                                                        <div className="flex justify-between items-center">
-                                                          <span className="text-bse">Engagement</span>
-                                                          <span className="text-bse text-black">{(mode?.average_engagement_level ?? 0).toFixed(1)}/100</span>
-                                                        </div>
-                                                        <Progress value={mode?.average_engagement_level ?? 0} className="h-2" />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <div className="flex justify-between items-center">
-                                                          <span className="text-bse">Communication</span>
-                                                          <span className="text-bse text-black">{(mode?.average_communication_level ?? 0).toFixed(1)}/100</span>
-                                                        </div>
-                                                        <Progress value={mode?.average_communication_level ?? 0} className="h-2" />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <div className="flex justify-between items-center">
-                                                          <span className="text-bse">Objection Handling</span>
-                                                          <span className="text-bse text-black">{(mode?.average_objection_handling ?? 0).toFixed(1)}/100</span>
-                                                        </div>
-                                                        <Progress value={mode?.average_objection_handling ?? 0} className="h-2" />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <div className="flex justify-between items-center">
-                                                          <span className="text-bse">Adaptability</span>
-                                                          <span className="text-bse text-black">{(mode?.average_adaptability ?? 0).toFixed(1)}/100</span>
-                                                        </div>
-                                                        <Progress value={mode?.average_adaptability ?? 0} className="h-2" />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <div className="flex justify-between items-center">
-                                                          <span className="text-bse">Persuasiveness</span>
-                                                          <span className="text-bse text-black">{(mode?.average_persuasiveness ?? 0).toFixed(1)}/100</span>
-                                                        </div>
-                                                        <Progress value={mode?.average_persuasiveness ?? 0} className="h-2" />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <div className="flex justify-between items-center">
-                                                          <span className="text-bse">Create Interest</span>
-                                                          <span className="text-bse text-black">{(mode?.average_create_interest ?? 0).toFixed(1)}/100</span>
-                                                        </div>
-                                                        <Progress value={mode?.average_create_interest ?? 0} className="h-2" />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <div className="flex justify-between items-center">
-                                                          <span className="text-bse">Sale Closing</span>
-                                                          <span className="text-bse text-black">{(mode?.average_sale_closing ?? 0).toFixed(1)}/100</span>
-                                                        </div>
-                                                        <Progress value={mode?.average_sale_closing ?? 0} className="h-2" />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <div className="flex justify-between items-center">
-                                                          <span className="text-bse">Discovery</span>
-                                                          <span className="text-bse text-black">{(mode?.average_discovery ?? 0).toFixed(1)}/100</span>
-                                                        </div>
-                                                        <Progress value={mode?.average_discovery ?? 0} className="h-2" />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <div className="flex justify-between items-center">
-                                                          <span className="text-bse">Cross Selling</span>
-                                                          <span className="text-bse text-black">{(mode?.average_cross_selling ?? 0).toFixed(1)}/100</span>
-                                                        </div>
-                                                        <Progress value={mode?.average_cross_selling ?? 0} className="h-2" />
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        <div className="flex justify-between items-center">
-                                                          <span className="text-bse">Solution Fit</span>
-                                                          <span className="text-bse text-black">{(mode?.average_solution_fit ?? 0).toFixed(1)}/100</span>
-                                                        </div>
-                                                        <Progress value={mode?.average_solution_fit ?? 0} className="h-2" />
-                                                      </div>
-                                                    </div>
-                                                  </>
-                                                )}
-                                              </div>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
                                 </div> : null
                             ))}
                           </div>
@@ -1350,7 +1989,12 @@ export function Teams() {
                     </div>
                     <div>
                       <CardTitle className="text-lg">{team?.name}</CardTitle>
-                      <p className="text-sm text-muted-foreground">{companiesData?.length ? companiesData.filter((v) => v?.sales_company_id === team?.sales_company_id).map((val) => val?.name) : null}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {(() => {
+                          const company = companiesData?.find((v: any) => v?.sales_company_id === team?.sales_company_id);
+                          return company?.name || '';
+                        })()}
+                      </p>
                     </div>
                   </div>
                 </div>
