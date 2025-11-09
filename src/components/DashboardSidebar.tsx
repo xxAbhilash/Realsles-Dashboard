@@ -27,6 +27,7 @@ import { useDispatch } from "react-redux";
 import { AddUser } from "@/redux/AuthReducer";
 import { apis } from "@/utils/apis";
 import { RootState, UserData } from "../types";
+import { PlatformFeedback } from "./PlatformFeedback";
 
 const salesRepItems = [
   { title: "Overview", url: "/overview", icon: LayoutDashboard },
@@ -86,6 +87,7 @@ export function DashboardSidebar({ userRole, onRoleChange }: DashboardSidebarPro
   };
   const [user, setUser] = useState<UserData>(getInitialUser());
   const [openProfile, setOpenProfile]: any = useState<Boolean>(false)
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   // Calculate items based on user role and subscription
   const items = userRole === "sales-rep" ? salesRepItems : getSalesManagerItems(user || {} as UserData);
@@ -171,55 +173,75 @@ export function DashboardSidebar({ userRole, onRoleChange }: DashboardSidebarPro
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
-            <SidebarMenu className="flex flex-col justify-end mt-14">
-              <SidebarMenuItem className="relative border border-solid shadow-md rounded-[10px] p-4 flex flex-col items-start gap-2">
-                <div>
-                  <p className="text-lg font-medium">Upgrade</p>
-                  <p className="text-base leading-[100%]">Get Access upto 3 Personas</p>
-                </div>
-                <NavLink to={"https://mainreal-sales.vercel.app/pricing"} className="border-b-[2px] border-dolid flex items-center justify-center gap-2 rounded hover:bg-[#FFDE5A] !border-[#FFDE5A] !bg-[#060606] !text-[#FFDE5A] !text-base !px-5 !py-2 h-fit" >upgrade your plan<svg width="19" height="15" fill="none" stroke="#FFDE5A">
-                  <path stroke="#FFDE5A" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m17.833 7.5-6.25-6.25m6.25 6.25-6.25 6.25m6.25-6.25H6.896m-5.73 0h2.605"></path>
-                </svg>
-                </NavLink>
-              </SidebarMenuItem>
-            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
 
         {!collapsed && (
-          <div className="mt-auto p-4 border-t">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setOpenProfile(!openProfile)}>
-                <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center">
-                  <User className="w-5 h-5 text-muted-foreground" />
+          <div className="mt-auto">
+            {/* Upgrade Section */}
+            <div className="px-2 pb-3">
+              <div className="relative border border-solid shadow-md rounded-[10px] p-4 flex flex-col items-start gap-2">
+                <div>
+                  <p className="text-lg font-medium">Upgrade</p>
+                  <p className="text-base leading-[100%]">Get Access upto 3 Personas</p>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-black group-hover:underline">{user?.first_name}&nbsp;{user?.last_name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {userRole === "sales-rep" ? "Sales Representative" : "Sales Manager"}
-                  </p>
-                </div>
-                {/* Dropdown icon (chevron) */}
-                <svg className={`${openProfile ? `rotate-180` : ``} w-4 h-4 text-muted-foreground group-hover:text-black`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                <NavLink to={"https://www.real-sales.com/pricing"} className="w-full border-b-[2px] border-dolid flex items-center justify-center gap-2 rounded hover:bg-[#FFDE5A] !border-[#FFDE5A] !bg-[#060606] !text-[#FFDE5A] !text-base !px-5 !py-2 h-fit" >upgrade your plan<svg width="19" height="15" fill="none" stroke="#FFDE5A">
+                  <path stroke="#FFDE5A" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m17.833 7.5-6.25-6.25m6.25 6.25-6.25 6.25m6.25-6.25H6.896m-5.73 0h2.605"></path>
                 </svg>
+                </NavLink>
               </div>
-              {openProfile ? <>
-                {items.filter((v) => v?.title === "Profile").map((item) => (
-                  <div key={item.title} className="w-full">
-                    <NavLink to={item.url} className={getNavCls}>
-                      <item.icon className="mr-3 h-4 w-4 text-black" />
-                      {!collapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </div>
-                ))}
-              </> : null}
             </div>
-            {/* TODO: Add dropdown menu for profile/settings/logout if needed */}
+
+            {/* Platform Feedback Button */}
+            <div className="px-2 pb-4">
+              <div className="relative border border-solid shadow-md rounded-[10px] p-4 flex flex-col items-start gap-2">
+                <Button
+                  onClick={() => setIsFeedbackOpen(true)}
+                  className="w-full justify-center gap-2 border-2 border-solid !border-[#FFDE5A] !bg-[#FFDE5A] !text-[#060606] !text-base !px-5 !py-2 h-fit font-semibold transition-all shadow-[0px_4px_4px_0px_#00000040] !rounded"
+                  variant="default"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Platform Feedback
+                </Button>
+              </div>
+            </div>
+            
+            {/* Profile Section */}
+            <div className="p-4 border-t">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setOpenProfile(!openProfile)}>
+                  <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center">
+                    <User className="w-5 h-5 text-muted-foreground" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-black group-hover:underline">{user?.first_name}&nbsp;{user?.last_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {userRole === "sales-rep" ? "Sales Representative" : "Sales Manager"}
+                    </p>
+                  </div>
+                  {/* Dropdown icon (chevron) */}
+                  <svg className={`${openProfile ? `rotate-180` : ``} w-4 h-4 text-muted-foreground group-hover:text-black`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+                {openProfile ? <>
+                  {items.filter((v) => v?.title === "Profile").map((item) => (
+                    <div key={item.title} className="w-full">
+                      <NavLink to={item.url} className={getNavCls}>
+                        <item.icon className="mr-3 h-4 w-4 text-black" />
+                        {!collapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </div>
+                  ))}
+                </> : null}
+              </div>
+              {/* TODO: Add dropdown menu for profile/settings/logout if needed */}
+            </div>
           </div>
         )}
       </SidebarContent>
+      <PlatformFeedback open={isFeedbackOpen} onOpenChange={setIsFeedbackOpen} />
     </Sidebar>
   );
 }

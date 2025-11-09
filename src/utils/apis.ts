@@ -11,4 +11,5 @@ export const apis = {
   ,performance_manager_monthly_trend: "/v1/performance-reports/manager/"
   ,free_trial_requests: "/v1/free-trial-requests/" // Request a free trial
   ,my_trial_requests: "/v1/free-trial-requests/my-requests" // Check trial request status
+  ,platform_feedback: "/v1/platform-feedback/" // Platform feedback endpoint
 };
