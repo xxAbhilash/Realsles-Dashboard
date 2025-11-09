@@ -108,7 +108,7 @@ export default function Overview() {
   }, []);
   
   const handleStartSession = () => {
-    window.location.href = "https://www.mainreal-sales.vercel.app/about";
+    window.location.href = "https://mainreal-sales.vercel.app/about";
   };
   
   const handleRequestTrial = async () => {
