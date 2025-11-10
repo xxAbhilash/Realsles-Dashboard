@@ -1608,7 +1608,7 @@ export function Teams() {
                                                                         {mode?.average_objection_handling !== null && mode?.average_objection_handling !== undefined && (
                                                                           <div className="space-y-2">
                                                                             <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Objection Handling</span>
+                                                                              <span className="text-sm">Objection Handling & Value Selling</span>
                                                                               <span className="text-sm text-black">{(mode?.average_objection_handling ?? 0).toFixed(1)}/100</span>
                                                                             </div>
                                                                             <Progress value={mode?.average_objection_handling ?? 0} className="h-2" />
