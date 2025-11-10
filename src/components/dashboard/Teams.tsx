@@ -1604,26 +1604,6 @@ export function Teams() {
                                                                       </div>
                                                                       {/* Individual Skills - Show only non-null skills */}
                                                                       <div className="space-y-3 ml-2">
-                                                                        {/* Engagement Level */}
-                                                                        {mode?.average_engagement_level !== null && mode?.average_engagement_level !== undefined && (
-                                                                          <div className="space-y-2">
-                                                                            <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Engagement Level</span>
-                                                                              <span className="text-sm text-black">{(mode?.average_engagement_level ?? 0).toFixed(1)}/100</span>
-                                                                            </div>
-                                                                            <Progress value={mode?.average_engagement_level ?? 0} className="h-2" />
-                                                                          </div>
-                                                                        )}
-                                                                        {/* Communication Level */}
-                                                                        {mode?.average_communication_level !== null && mode?.average_communication_level !== undefined && (
-                                                                          <div className="space-y-2">
-                                                                            <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Communication Level</span>
-                                                                              <span className="text-sm text-black">{(mode?.average_communication_level ?? 0).toFixed(1)}/100</span>
-                                                                            </div>
-                                                                            <Progress value={mode?.average_communication_level ?? 0} className="h-2" />
-                                                                          </div>
-                                                                        )}
                                                                         {/* Objection Handling */}
                                                                         {mode?.average_objection_handling !== null && mode?.average_objection_handling !== undefined && (
                                                                           <div className="space-y-2">
@@ -1634,14 +1614,14 @@ export function Teams() {
                                                                             <Progress value={mode?.average_objection_handling ?? 0} className="h-2" />
                                                                           </div>
                                                                         )}
-                                                                        {/* Adaptability */}
-                                                                        {mode?.average_adaptability !== null && mode?.average_adaptability !== undefined && (
+                                                                        {/* Communication Level */}
+                                                                        {mode?.average_communication_level !== null && mode?.average_communication_level !== undefined && (
                                                                           <div className="space-y-2">
                                                                             <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Adaptability</span>
-                                                                              <span className="text-sm text-black">{(mode?.average_adaptability ?? 0).toFixed(1)}/100</span>
+                                                                              <span className="text-sm">Communication Level</span>
+                                                                              <span className="text-sm text-black">{(mode?.average_communication_level ?? 0).toFixed(1)}/100</span>
                                                                             </div>
-                                                                            <Progress value={mode?.average_adaptability ?? 0} className="h-2" />
+                                                                            <Progress value={mode?.average_communication_level ?? 0} className="h-2" />
                                                                           </div>
                                                                         )}
                                                                         {/* Discovery */}
@@ -1662,6 +1642,26 @@ export function Teams() {
                                                                               <span className="text-sm text-black">{(mode?.average_solution_fit ?? 0).toFixed(1)}/100</span>
                                                                             </div>
                                                                             <Progress value={mode?.average_solution_fit ?? 0} className="h-2" />
+                                                                          </div>
+                                                                        )}
+                                                                        {/* Engagement Level */}
+                                                                        {mode?.average_engagement_level !== null && mode?.average_engagement_level !== undefined && (
+                                                                          <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                              <span className="text-sm">Engagement Level</span>
+                                                                              <span className="text-sm text-black">{(mode?.average_engagement_level ?? 0).toFixed(1)}/100</span>
+                                                                            </div>
+                                                                            <Progress value={mode?.average_engagement_level ?? 0} className="h-2" />
+                                                                          </div>
+                                                                        )}
+                                                                        {/* Adaptability */}
+                                                                        {mode?.average_adaptability !== null && mode?.average_adaptability !== undefined && (
+                                                                          <div className="space-y-2">
+                                                                            <div className="flex justify-between items-center">
+                                                                              <span className="text-sm">Adaptability</span>
+                                                                              <span className="text-sm text-black">{(mode?.average_adaptability ?? 0).toFixed(1)}/100</span>
+                                                                            </div>
+                                                                            <Progress value={mode?.average_adaptability ?? 0} className="h-2" />
                                                                           </div>
                                                                         )}
                                                                         {/* Create Interest - typically for prospecting */}
