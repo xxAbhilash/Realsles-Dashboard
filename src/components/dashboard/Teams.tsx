@@ -17,6 +17,7 @@ import { useSelector } from "react-redux";
 import { showToast } from "@/lib/toastConfig";
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from "@/components/ui/alert-dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../ui/accordion";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import moment from "moment"
 
 const teamsData = [
@@ -81,6 +82,109 @@ const availableUsers = [
 //   { month: "May", performance: 8.5, sessions: 48 },
 //   { month: "Jun", performance: 8.8, sessions: 55 }
 // ];
+
+// Skill descriptions for info tooltips
+const skillDescriptions: Record<string, { title: string; description: string; keyAreas: string[] }> = {
+  relationship_building: {
+    title: "Relationship Building",
+    description: "What it measures: Ability to establish rapport, build trust and credibility, and create personal connection with the prospect. Includes professional presence, finding common ground, demonstrating genuine interest, and adapting communication style to match the prospect's preferences.",
+    keyAreas: [
+      "Rapport establishment and trust building",
+      "Professional presence and credibility demonstration",
+      "Finding common ground and shared experiences",
+      "Genuine interest in prospect's business and challenges",
+      "Communication style adaptation to match prospect preferences"
+    ]
+  },
+  communication_excellence: {
+    title: "Communication Excellence",
+    description: "What it measures: Overall communication effectiveness including clarity of message delivery, active listening skills, appropriate questioning techniques, professional tone, and ability to adapt communication style based on prospect feedback and cues.",
+    keyAreas: [
+      "Message clarity and articulation",
+      "Active listening demonstration through responses",
+      "Strategic questioning techniques and follow-up",
+      "Professional tone and appropriate language use",
+      "Responsiveness to prospect cues and feedback"
+    ]
+  },
+  needs_discovery: {
+    title: "Needs Discovery",
+    description: "What it measures: Ability to uncover prospect's business challenges, pain points, goals, and priorities through strategic questioning. Includes identifying both explicit and implicit needs, understanding impact of current situation, and exploring consequences of inaction.",
+    keyAreas: [
+      "Strategic questioning to uncover business challenges",
+      "Identification of explicit and implicit needs",
+      "Understanding of current situation impact",
+      "Exploration of consequences of maintaining status quo",
+      "Prioritization of prospect's goals and objectives"
+    ]
+  },
+  solution_matching: {
+    title: "Solution Matching",
+    description: "What it measures: Ability to connect identified customer needs to appropriate company solutions, demonstrate relevant features and benefits, present compelling use cases, and translate technical capabilities into business outcomes that matter to the prospect.",
+    keyAreas: [
+      "Accurate matching of solutions to identified needs",
+      "Relevant feature and benefit demonstration",
+      "Compelling use case presentation",
+      "Translation of technical capabilities to business outcomes",
+      "Relevance and impact of proposed solutions"
+    ]
+  },
+  objection_handling_and_value_selling: {
+    title: "Objection Handling & Value Selling",
+    description: "What it measures: Ability to address prospect concerns and resistance by reinforcing value proposition, providing evidence and proof points, calculating ROI/business impact, and reframing objections as opportunities to demonstrate additional value.",
+    keyAreas: [
+      "Effective addressing of prospect concerns and resistance",
+      "Value proposition reinforcement and evidence presentation",
+      "ROI and business impact calculation and presentation",
+      "Reframing objections as value demonstration opportunities",
+      "Proof point relevance and credibility"
+    ]
+  },
+  negotiation: {
+    title: "Negotiation",
+    description: "What it measures: Ability to create appropriate urgency, handle pricing discussions, negotiate terms and conditions, find win-win solutions, and maintain deal profitability while addressing prospect requirements and timeline constraints.",
+    keyAreas: [
+      "Creation of appropriate urgency without pressure",
+      "Effective handling of pricing discussions",
+      "Terms and conditions negotiation effectiveness",
+      "Win-win solution identification and presentation",
+      "Balance between prospect satisfaction and deal profitability"
+    ]
+  },
+  cross_selling: {
+    title: "Cross Selling",
+    description: "What it measures: Ability to identify additional opportunities beyond the primary need, spot complementary products/services, uncover broader business challenges, and expand deal scope while maintaining relevance to customer priorities.",
+    keyAreas: [
+      "Identification of additional opportunities beyond primary need",
+      "Recognition of complementary product/service opportunities",
+      "Uncovering of broader business challenges and implications",
+      "Deal scope expansion while maintaining relevance",
+      "Alignment of additional opportunities with customer priorities"
+    ]
+  },
+  qualifying_lead: {
+    title: "Qualifying Lead",
+    description: "What it measures: Ability to generate initial interest, assess prospect fit, and determine if they meet ideal customer criteria. Includes asking qualifying questions, gauging budget/authority/need/timeline, and identifying decision-making process.",
+    keyAreas: [
+      "Initial interest generation effectiveness",
+      "Qualifying question quality and relevance",
+      "Assessment of prospect fit against ideal customer profile",
+      "Understanding of decision-making authority and process",
+      "Identification of budget parameters and timeline"
+    ]
+  },
+  sales_closing: {
+    title: "Sales Closing",
+    description: "What it measures: Ability to secure commitment and advance the sale through effective closing techniques, asking for the business confidently, addressing final hesitations, establishing clear next steps, and converting interest into actionable commitment.",
+    keyAreas: [
+      "Effective closing technique application",
+      "Confident request for business commitment",
+      "Addressing of final hesitations and concerns",
+      "Clear next steps establishment and timeline setting",
+      "Conversion of interest into actionable commitment"
+    ]
+  }
+};
 
 export function Teams() {
 
@@ -1679,15 +1783,47 @@ export function Teams() {
                                                                             }
                                                                           }
 
-                                                                          return metrics.map((metric) => (
-                                                                            <div key={metric.key} className="space-y-2">
-                                                        <div className="flex justify-between items-center">
-                                                                                <span className="text-sm">{metric.label}</span>
-                                                                                <span className="text-sm text-black">{(metric.value ?? 0).toFixed(1)}/100</span>
+                                                                          return metrics.map((metric) => {
+                                                                            const skillInfo = skillDescriptions[metric.key];
+                                                                            return (
+                                                                              <div key={metric.key} className="space-y-2">
+                                                                                <div className="flex justify-between items-center gap-2">
+                                                                                  <div className="flex items-center gap-2 flex-1">
+                                                                                    <span className="text-sm">{metric.label}</span>
+                                                                                    {skillInfo && (
+                                                                                      <Popover>
+                                                                                        <PopoverTrigger asChild>
+                                                                                          <button
+                                                                                            type="button"
+                                                                                            className="flex-shrink-0 w-4 h-4 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center transition-colors"
+                                                                                            onClick={(e) => e.stopPropagation()}
+                                                                                          >
+                                                                                            <Info className="w-3 h-3 text-gray-600" />
+                                                                                          </button>
+                                                                                        </PopoverTrigger>
+                                                                                        <PopoverContent className="w-[500px] max-h-96 overflow-y-auto" align="start">
+                                                                                          <div className="space-y-3">
+                                                                                            <h4 className="font-semibold text-base">{skillInfo.title}</h4>
+                                                                                            <p className="text-sm text-gray-700 leading-relaxed">{skillInfo.description}</p>
+                                                                                            <div>
+                                                                                              <h5 className="font-medium text-sm mb-2">Key Evaluation Areas:</h5>
+                                                                                              <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
+                                                                                                {skillInfo.keyAreas.map((area, idx) => (
+                                                                                                  <li key={idx}>{area}</li>
+                                                                                                ))}
+                                                                                              </ul>
                                                         </div>
-                                                                              <Progress value={metric.value ?? 0} className="h-2" />
                                                       </div>
-                                                                          ));
+                                                                                        </PopoverContent>
+                                                                                      </Popover>
+                                                                                    )}
+                                                        </div>
+                                                                                  <span className="text-sm text-black flex-shrink-0">{(metric.value ?? 0).toFixed(1)}/100</span>
+                                                      </div>
+                                                                                <Progress value={metric.value ?? 0} className="h-2" />
+                                                        </div>
+                                                                            );
+                                                                          });
                                                                         })()}
                                                     </div>
                                                   </>
