@@ -96,17 +96,16 @@ export interface PaymentMethod {
 export interface PerformanceByMode {
   mode_name: string;
   session_count: number;
-  average_objection_handling: number | null;
-  average_adaptability: number | null;
   average_overall_score: number | null;
-  average_discovery: number | null;
-  average_solution_fit: number | null;
-  average_engagement_level: number | null;
-  average_communication_level: number | null;
-  average_create_interest?: number | null;
+  average_objection_handling_and_value_selling: number | null;
+  average_needs_discovery: number | null;
+  average_relationship_building: number | null;
+  average_qualifying_lead?: number | null;
+  average_communication_excellence: number | null;
+  average_negotiation: number | null;
+  average_solution_matching: number | null;
   average_cross_selling?: number | null;
-  average_sale_closing?: number | null;
-  average_persuasiveness?: number | null;
+  average_sales_closing?: number | null;
 }
 
 export interface MemberPerformance {

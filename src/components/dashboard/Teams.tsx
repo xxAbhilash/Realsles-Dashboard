@@ -1062,19 +1062,19 @@ export function Teams() {
                       >
                         <FileText className="w-4 h-4" />
                       </Button>
-                      <Button
-                        title="Delete"
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
+                    <Button
+                      title="Delete"
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
                         onClick={(e) => { 
                           e.stopPropagation(); 
                           setDeletingMemberId(member?.member_id); 
                           setIsDeleteMemberDialogOpen(true); 
                         }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                     </div>
                   </div>
                   );
@@ -1569,152 +1569,137 @@ export function Teams() {
                                       <span className="font-medium text-base text-gray-700">{member?.user?.first_name} {member?.user?.last_name}</span>
                                       <span className="text-bse text-gray-500">{member?.user?.email}</span>
                                     </div>
-                                                  </div> */}
-                                                  <div>
+                                  </div> */}
+                                  <div>
                                                     {/* Performance by Mode (Accordion) */}
-                                                    {Array.isArray(member?.performance_by_mode) && (
+                                    {Array.isArray(member?.performance_by_mode) && (
                                                       <Accordion type="single" collapsible defaultValue={`mode-0`} className="w-full">
-                                                        {member.performance_by_mode.map((mode, modeIdx) => {
-                                                          const sessionCount = mode?.session_count || 0;
-                                                          const overallScore = mode?.average_overall_score ?? 0;
-                                                          
-                                                          return (
+                                        {member.performance_by_mode.map((mode, modeIdx) => {
+                                          const sessionCount = mode?.session_count || 0;
+                                          const overallScore = mode?.average_overall_score ?? 0;
+                                          
+                                          return (
                                                             <AccordionItem key={modeIdx} value={`mode-${modeIdx}`}>
                                                               <AccordionTrigger className="hover:no-underline">
                                                                 <div className="flex justify-between items-center w-full pr-4">
-                                                                  <span className="text-base font-medium capitalize">{mode?.mode_name}</span>
+                                                  <span className="text-base font-medium capitalize">{mode?.mode_name}</span>
                                                                   <span className="text-sm text-gray-600">{sessionCount} sessions</span>
-                                                                </div>
+                                                </div>
                                                               </AccordionTrigger>
                                                               <AccordionContent>
                                                                 <div className="pt-2 pb-4">
-                                                                  {sessionCount === 0 ? (
-                                                                    <div className="text-center py-6 text-muted-foreground">
-                                                                      <span className="text-base">No Sessions Completed</span>
-                                                                    </div>
-                                                                  ) : (
-                                                                    <>
-                                                                      {/* Mode Overall Score */}
-                                                                      <div className="space-y-2 mb-4">
-                                                                        <div className="flex justify-between items-center">
+                                                {sessionCount === 0 ? (
+                                                  <div className="text-center py-6 text-muted-foreground">
+                                                    <span className="text-base">No Sessions Completed</span>
+                                                  </div>
+                                                ) : (
+                                                  <>
+                                                    {/* Mode Overall Score */}
+                                                    <div className="space-y-2 mb-4">
+                                                      <div className="flex justify-between items-center">
                                                                           <span className="text-sm font-medium">Overall Score</span>
                                                                           <span className="text-sm text-black font-bold">{overallScore.toFixed(1)}/100</span>
-                                                                        </div>
-                                                                        <Progress value={overallScore} className="h-2" />
-                                                                      </div>
-                                                                      {/* Individual Skills - Show only non-null skills */}
-                                                                      <div className="space-y-3 ml-2">
-                                                                        {/* Objection Handling */}
-                                                                        {mode?.average_objection_handling !== null && mode?.average_objection_handling !== undefined && (
-                                                                          <div className="space-y-2">
-                                                                            <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Objection Handling & Value Selling</span>
-                                                                              <span className="text-sm text-black">{(mode?.average_objection_handling ?? 0).toFixed(1)}/100</span>
-                                                                            </div>
-                                                                            <Progress value={mode?.average_objection_handling ?? 0} className="h-2" />
-                                                                          </div>
-                                                                        )}
-                                                                        {/* Communication Level */}
-                                                                        {mode?.average_communication_level !== null && mode?.average_communication_level !== undefined && (
-                                                                          <div className="space-y-2">
-                                                                            <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Communication Level</span>
-                                                                              <span className="text-sm text-black">{(mode?.average_communication_level ?? 0).toFixed(1)}/100</span>
-                                                                            </div>
-                                                                            <Progress value={mode?.average_communication_level ?? 0} className="h-2" />
-                                                                          </div>
-                                                                        )}
-                                                                        {/* Discovery */}
-                                                                        {mode?.average_discovery !== null && mode?.average_discovery !== undefined && (
-                                                                          <div className="space-y-2">
-                                                                            <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Discovery</span>
-                                                                              <span className="text-sm text-black">{(mode?.average_discovery ?? 0).toFixed(1)}/100</span>
-                                                                            </div>
-                                                                            <Progress value={mode?.average_discovery ?? 0} className="h-2" />
-                                                                          </div>
-                                                                        )}
-                                                                        {/* Solution Fit */}
-                                                                        {mode?.average_solution_fit !== null && mode?.average_solution_fit !== undefined && (
-                                                                          <div className="space-y-2">
-                                                                            <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Solution Fit</span>
-                                                                              <span className="text-sm text-black">{(mode?.average_solution_fit ?? 0).toFixed(1)}/100</span>
-                                                                            </div>
-                                                                            <Progress value={mode?.average_solution_fit ?? 0} className="h-2" />
-                                                                          </div>
-                                                                        )}
-                                                                        {/* Engagement Level */}
-                                                                        {mode?.average_engagement_level !== null && mode?.average_engagement_level !== undefined && (
-                                                                          <div className="space-y-2">
-                                                                            <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Engagement Level</span>
-                                                                              <span className="text-sm text-black">{(mode?.average_engagement_level ?? 0).toFixed(1)}/100</span>
-                                                                            </div>
-                                                                            <Progress value={mode?.average_engagement_level ?? 0} className="h-2" />
-                                                                          </div>
-                                                                        )}
-                                                                        {/* Adaptability */}
-                                                                        {mode?.average_adaptability !== null && mode?.average_adaptability !== undefined && (
-                                                                          <div className="space-y-2">
-                                                                            <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Adaptability</span>
-                                                                              <span className="text-sm text-black">{(mode?.average_adaptability ?? 0).toFixed(1)}/100</span>
-                                                                            </div>
-                                                                            <Progress value={mode?.average_adaptability ?? 0} className="h-2" />
-                                                                          </div>
-                                                                        )}
-                                                                        {/* Create Interest - typically for prospecting */}
-                                                                        {mode?.average_create_interest !== null && mode?.average_create_interest !== undefined && (
-                                                                          <div className="space-y-2">
-                                                                            <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Create Interest</span>
-                                                                              <span className="text-sm text-black">{(mode?.average_create_interest ?? 0).toFixed(1)}/100</span>
-                                                                            </div>
-                                                                            <Progress value={mode?.average_create_interest ?? 0} className="h-2" />
-                                                                          </div>
-                                                                        )}
-                                                                        {/* Cross Selling - typically for discovering */}
-                                                                        {mode?.average_cross_selling !== null && mode?.average_cross_selling !== undefined && (
-                                                                          <div className="space-y-2">
-                                                                            <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Cross Selling</span>
-                                                                              <span className="text-sm text-black">{(mode?.average_cross_selling ?? 0).toFixed(1)}/100</span>
-                                                                            </div>
-                                                                            <Progress value={mode?.average_cross_selling ?? 0} className="h-2" />
-                                                                          </div>
-                                                                        )}
-                                                                        {/* Sale Closing - typically for closing */}
-                                                                        {mode?.average_sale_closing !== null && mode?.average_sale_closing !== undefined && (
-                                                                          <div className="space-y-2">
-                                                                            <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Sale Closing</span>
-                                                                              <span className="text-sm text-black">{(mode?.average_sale_closing ?? 0).toFixed(1)}/100</span>
-                                                                            </div>
-                                                                            <Progress value={mode?.average_sale_closing ?? 0} className="h-2" />
-                                                                          </div>
-                                                                        )}
-                                                                        {/* Persuasiveness */}
-                                                                        {mode?.average_persuasiveness !== null && mode?.average_persuasiveness !== undefined && (
-                                                                          <div className="space-y-2">
-                                                                            <div className="flex justify-between items-center">
-                                                                              <span className="text-sm">Persuasiveness</span>
-                                                                              <span className="text-sm text-black">{(mode?.average_persuasiveness ?? 0).toFixed(1)}/100</span>
-                                                                            </div>
-                                                                            <Progress value={mode?.average_persuasiveness ?? 0} className="h-2" />
-                                                                          </div>
-                                                                        )}
-                                                                      </div>
-                                                                    </>
-                                                                  )}
-                                                                </div>
+                                                      </div>
+                                                      <Progress value={overallScore} className="h-2" />
+                                                    </div>
+                                                                      {/* Individual Skills - Show in correct order based on mode */}
+                                                    <div className="space-y-3 ml-2">
+                                                                        {(() => {
+                                                                          const modeName = mode?.mode_name?.toLowerCase() || '';
+                                                                          const metrics: Array<{ key: string; label: string; value: number | null }> = [];
+
+                                                                          // Define metrics based on mode
+                                                                          if (modeName === 'prospecting') {
+                                                                            // Prospecting order
+                                                                            if (mode?.average_qualifying_lead !== null && mode?.average_qualifying_lead !== undefined) {
+                                                                              metrics.push({ key: 'qualifying_lead', label: 'Qualifying Lead', value: mode.average_qualifying_lead });
+                                                                            }
+                                                                            if (mode?.average_relationship_building !== null && mode?.average_relationship_building !== undefined) {
+                                                                              metrics.push({ key: 'relationship_building', label: 'Relationship Building', value: mode.average_relationship_building });
+                                                                            }
+                                                                            if (mode?.average_communication_excellence !== null && mode?.average_communication_excellence !== undefined) {
+                                                                              metrics.push({ key: 'communication_excellence', label: 'Communication Excellence', value: mode.average_communication_excellence });
+                                                                            }
+                                                                            if (mode?.average_needs_discovery !== null && mode?.average_needs_discovery !== undefined) {
+                                                                              metrics.push({ key: 'needs_discovery', label: 'Discovery', value: mode.average_needs_discovery });
+                                                                            }
+                                                                            if (mode?.average_solution_matching !== null && mode?.average_solution_matching !== undefined) {
+                                                                              metrics.push({ key: 'solution_matching', label: 'Solution Matching', value: mode.average_solution_matching });
+                                                                            }
+                                                                            if (mode?.average_objection_handling_and_value_selling !== null && mode?.average_objection_handling_and_value_selling !== undefined) {
+                                                                              metrics.push({ key: 'objection_handling_and_value_selling', label: 'Objection Handling & Value Selling', value: mode.average_objection_handling_and_value_selling });
+                                                                            }
+                                                                            if (mode?.average_negotiation !== null && mode?.average_negotiation !== undefined) {
+                                                                              metrics.push({ key: 'negotiation', label: 'Negotiation', value: mode.average_negotiation });
+                                                                            }
+                                                                          } else if (modeName === 'discovering' || modeName === 'discovery') {
+                                                                            // Discovering order
+                                                                            // Always show cross_selling for discovering mode first (even if null, show as 0)
+                                                                            metrics.push({ key: 'cross_selling', label: 'Cross Selling', value: mode?.average_cross_selling ?? 0 });
+                                                                            if (mode?.average_relationship_building !== null && mode?.average_relationship_building !== undefined) {
+                                                                              metrics.push({ key: 'relationship_building', label: 'Relationship Building', value: mode.average_relationship_building });
+                                                                            }
+                                                                            if (mode?.average_communication_excellence !== null && mode?.average_communication_excellence !== undefined) {
+                                                                              metrics.push({ key: 'communication_excellence', label: 'Communication Excellence', value: mode.average_communication_excellence });
+                                                                            }
+                                                                            if (mode?.average_needs_discovery !== null && mode?.average_needs_discovery !== undefined) {
+                                                                              metrics.push({ key: 'needs_discovery', label: 'Discovery', value: mode.average_needs_discovery });
+                                                                            }
+                                                                            if (mode?.average_solution_matching !== null && mode?.average_solution_matching !== undefined) {
+                                                                              metrics.push({ key: 'solution_matching', label: 'Solution Matching', value: mode.average_solution_matching });
+                                                                            }
+                                                                            if (mode?.average_objection_handling_and_value_selling !== null && mode?.average_objection_handling_and_value_selling !== undefined) {
+                                                                              metrics.push({ key: 'objection_handling_and_value_selling', label: 'Objection Handling & Value Selling', value: mode.average_objection_handling_and_value_selling });
+                                                                            }
+                                                                            if (mode?.average_negotiation !== null && mode?.average_negotiation !== undefined) {
+                                                                              metrics.push({ key: 'negotiation', label: 'Negotiation', value: mode.average_negotiation });
+                                                                            }
+                                                                          } else if (modeName === 'closing') {
+                                                                            // Closing order
+                                                                            if (mode?.average_sales_closing !== null && mode?.average_sales_closing !== undefined) {
+                                                                              metrics.push({ key: 'sales_closing', label: 'Sales Closing', value: mode.average_sales_closing });
+                                                                            }
+                                                                            if (mode?.average_relationship_building !== null && mode?.average_relationship_building !== undefined) {
+                                                                              metrics.push({ key: 'relationship_building', label: 'Relationship Building', value: mode.average_relationship_building });
+                                                                            }
+                                                                            if (mode?.average_communication_excellence !== null && mode?.average_communication_excellence !== undefined) {
+                                                                              metrics.push({ key: 'communication_excellence', label: 'Communication Excellence', value: mode.average_communication_excellence });
+                                                                            }
+                                                                            if (mode?.average_needs_discovery !== null && mode?.average_needs_discovery !== undefined) {
+                                                                              metrics.push({ key: 'needs_discovery', label: 'Discovery', value: mode.average_needs_discovery });
+                                                                            }
+                                                                            if (mode?.average_solution_matching !== null && mode?.average_solution_matching !== undefined) {
+                                                                              metrics.push({ key: 'solution_matching', label: 'Solution Matching', value: mode.average_solution_matching });
+                                                                            }
+                                                                            if (mode?.average_objection_handling_and_value_selling !== null && mode?.average_objection_handling_and_value_selling !== undefined) {
+                                                                              metrics.push({ key: 'objection_handling_and_value_selling', label: 'Objection Handling & Value Selling', value: mode.average_objection_handling_and_value_selling });
+                                                                            }
+                                                                            if (mode?.average_negotiation !== null && mode?.average_negotiation !== undefined) {
+                                                                              metrics.push({ key: 'negotiation', label: 'Negotiation', value: mode.average_negotiation });
+                                                                            }
+                                                                          }
+
+                                                                          return metrics.map((metric) => (
+                                                                            <div key={metric.key} className="space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                                                <span className="text-sm">{metric.label}</span>
+                                                                                <span className="text-sm text-black">{(metric.value ?? 0).toFixed(1)}/100</span>
+                                                        </div>
+                                                                              <Progress value={metric.value ?? 0} className="h-2" />
+                                                      </div>
+                                                                          ));
+                                                                        })()}
+                                                    </div>
+                                                  </>
+                                                )}
+                                              </div>
                                                               </AccordionContent>
                                                             </AccordionItem>
-                                                          );
-                                                        })}
+                                          );
+                                        })}
                                                       </Accordion>
-                                                    )}
-                                                  </div>
+                                    )}
+                                  </div>
                                 </div> : null
                             ))}
                           </div>
