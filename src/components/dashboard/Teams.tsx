@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Users, Plus, ChevronDown, Building2, TrendingUp, Calendar, User, BarChart3, Search, X, ArrowLeft, Check, Edit, Trash2, FileText, Info } from "lucide-react";
+import { Users, Plus, Minus, ChevronDown, Building2, TrendingUp, Calendar, User, BarChart3, Search, X, ArrowLeft, Check, Edit, Trash2, FileText, Info } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { apis } from "@/utils/apis";
 import { useApi } from "@/hooks/useApi";
@@ -1682,13 +1682,24 @@ export function Teams() {
                                           const sessionCount = mode?.session_count || 0;
                                           const overallScore = mode?.average_overall_score ?? 0;
                                           
-                                          return (
+                                                          return (
                                                             <AccordionItem key={modeIdx} value={`mode-${modeIdx}`}>
-                                                              <AccordionTrigger className="hover:no-underline">
+                                                              <AccordionTrigger className="hover:no-underline group [&>svg]:hidden">
                                                                 <div className="flex justify-between items-center w-full pr-4">
-                                                  <span className="text-base font-medium capitalize">{mode?.mode_name}</span>
-                                                                  <span className="text-sm text-gray-600">{sessionCount} sessions</span>
-                                                </div>
+                                                                  <div className="flex flex-col items-start">
+                                                                    <span className="text-base font-medium capitalize">{mode?.mode_name}</span>
+                                                                    <span className="text-sm font-semibold text-gray-700">
+                                                                      Overall Score: {(overallScore).toFixed(1)}/100
+                                                                    </span>
+                                                                  </div>
+                                                                  <div className="flex items-center gap-2">
+                                                                    <span className="text-sm text-gray-600">{sessionCount} sessions</span>
+                                                                    <div className="w-6 h-6 rounded bg-[#FFDE5A] flex items-center justify-center shrink-0">
+                                                                      <Plus className="h-4 w-4 text-black group-data-[state=open]:hidden" />
+                                                                      <Minus className="h-4 w-4 text-black hidden group-data-[state=open]:block" />
+                                                                    </div>
+                                                                  </div>
+                                                                </div>
                                                               </AccordionTrigger>
                                                               <AccordionContent>
                                                                 <div className="pt-2 pb-4">
@@ -1698,14 +1709,6 @@ export function Teams() {
                                                   </div>
                                                 ) : (
                                                   <>
-                                                    {/* Mode Overall Score */}
-                                                    <div className="space-y-2 mb-4">
-                                                      <div className="flex justify-between items-center">
-                                                                          <span className="text-sm font-medium">Overall Score</span>
-                                                                          <span className="text-sm text-black font-bold">{overallScore.toFixed(1)}/100</span>
-                                                      </div>
-                                                      <Progress value={overallScore} className="h-2" />
-                                                    </div>
                                                                       {/* Individual Skills - Show in correct order based on mode */}
                                                     <div className="space-y-3 ml-2">
                                                                         {(() => {
