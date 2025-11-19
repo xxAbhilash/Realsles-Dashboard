@@ -4,13 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Users, Plus, Minus, ChevronDown, Building2, TrendingUp, Calendar, User, BarChart3, Search, X, ArrowLeft, Check, Edit, Trash2, FileText, Info } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { Users, Plus, Minus, ChevronDown, Building2, TrendingUp, Calendar, User, BarChart3, Search, X, ArrowLeft, Check, Edit, Trash2, Info, Briefcase, MapPin, Factory, Building, Package, Sparkles, Target, CheckCircle, Clock, Percent, AlertCircle, UserCircle, FileText } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
 import { apis } from "@/utils/apis";
 import { useApi } from "@/hooks/useApi";
 import { useSelector } from "react-redux";
@@ -18,6 +19,7 @@ import { showToast } from "@/lib/toastConfig";
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from "@/components/ui/alert-dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../ui/accordion";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import moment from "moment"
 
 const teamsData = [
@@ -225,14 +227,25 @@ export function Teams() {
   const [selectedMemberForScenario, setSelectedMemberForScenario] = useState<any>(null);
   const [scenarioData, setScenarioData] = useState({
     mode: "",
-    persona: ""
+    persona: "",
+    description: "",
+    timeLimit: 7,
+    message: ""
   });
+  const [scenarioStep, setScenarioStep] = useState<1 | 2>(1);
+  const [selectedAdditionalMembers, setSelectedAdditionalMembers] = useState<number[]>([]);
   const [modesData, setModesData] = useState<any[]>([]);
   const [personasData, setPersonasData] = useState<any[]>([]);
   const [isAssigningScenario, setIsAssigningScenario] = useState(false);
   const [isPersonaDetailsOpen, setIsPersonaDetailsOpen] = useState(false);
   const [selectedPersonaDetails, setSelectedPersonaDetails] = useState<any>(null);
   const [loadingPersonaDetails, setLoadingPersonaDetails] = useState(false);
+  const [scenarioDashboardData, setScenarioDashboardData] = useState<any>(null);
+  const [loadingScenarioDashboard, setLoadingScenarioDashboard] = useState(false);
+  const [scenarioDashboardError, setScenarioDashboardError] = useState<string | null>(null);
+  const [isUserScenariosDialogOpen, setIsUserScenariosDialogOpen] = useState(false);
+  const [selectedUserScenarios, setSelectedUserScenarios] = useState<any[]>([]);
+  const [selectedUserInfo, setSelectedUserInfo] = useState<{ name: string; email: string; userId: string } | null>(null);
 
   console.log(teamMembers, data, "teamMembers__")
   // Add state for selected mode
@@ -272,6 +285,8 @@ export function Teams() {
     setViewMode("overview");
     setSelectedTeam(null);
     setTeamMembers([]);
+    setScenarioDashboardData(null);
+    setScenarioDashboardError(null);
     // Refresh teams and companies data when going back to overview
     getTeams();
   };
@@ -491,6 +506,9 @@ export function Teams() {
       // Refresh available members to update the filtered list
       await getAvailableMembers();
 
+      // Refresh scenario dashboard to reflect updated team member count
+      await getScenarioDashboard();
+
       showToast.success(`${selectedMembersForTeam.length} member(s) added to team successfully!`);
       setSelectedMembersForTeam([]);
       setMemberSearchQuery("");
@@ -646,6 +664,8 @@ export function Teams() {
       await getCompanyTeamMembersGraph()
       // Refresh available members to update the filtered list
       await getAvailableMembers()
+      // Refresh scenario dashboard to reflect updated team member count
+      await getScenarioDashboard()
     } catch (error) {
       console.log(error, "_error_")
       showToast.error("Failed to delete team member");
@@ -678,34 +698,132 @@ export function Teams() {
     }
   }
 
+  const handleProceed = () => {
+    if (!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1) {
+      showToast.error("Please fill in all required fields including time limit");
+      return;
+    }
+    setScenarioStep(2);
+  }
+
   const handleAssignScenario = async () => {
-    if (!scenarioData.mode || !scenarioData.persona) {
-      showToast.error("Please select both mode and persona");
+    if (!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1) {
+      showToast.error("Please fill in all required fields including time limit");
+      return;
+    }
+
+    if (!user?.user_id) {
+      showToast.error("Manager information not found");
+      return;
+    }
+
+    // Get all members to assign to (original + additional)
+    const allMembers = [
+      selectedMemberForScenario,
+      ...selectedAdditionalMembers.map(memberId => {
+        return teamMembers.find((m: any) => (m?.member_id || m?.user?.user_id) === memberId);
+      }).filter(Boolean)
+    ].filter(Boolean);
+
+    if (allMembers.length === 0) {
+      showToast.error("Please select at least one member");
       return;
     }
 
     setIsAssigningScenario(true);
-    try {
-      // TODO: Implement the actual API call for assigning scenario
-      // This will depend on your backend endpoint
-      console.log("Assigning scenario:", {
-        member: selectedMemberForScenario,
-        mode: scenarioData.mode,
-        persona: scenarioData.persona
-      });
+    const successMembers: string[] = [];
+    const failedMembers: string[] = [];
 
-      showToast.success(`Scenario assigned to ${selectedMemberForScenario?.user?.first_name} ${selectedMemberForScenario?.user?.last_name}`);
+    try {
+      // Process each member sequentially
+      for (const member of allMembers) {
+        try {
+          const userId = member?.user?.user_id || member?.user_id;
+          if (!userId) {
+            failedMembers.push(member?.user?.first_name || "Unknown");
+            continue;
+          }
+
+          // Step 1: Create session
+          const sessionPayload = {
+            user_id: userId.toString(),
+            persona_id: scenarioData.persona,
+            mode_id: scenarioData.mode,
+            scenario: scenarioData.description.trim()
+          };
+
+          const sessionResponse = await Post(apis.sessions_manager_create, sessionPayload);
+          
+          if (!sessionResponse?.session_id) {
+            throw new Error("Session creation failed - no session_id returned");
+          }
+
+          // Step 2: Create scenario
+          const scenarioPayload = {
+            session_id: sessionResponse.session_id,
+            manager_id: user.user_id.toString(),
+            time_limit_days: scenarioData.timeLimit,
+            message: scenarioData.message?.trim() || ""
+          };
+
+          await Post(apis.scenarios, scenarioPayload);
+
+          // Track success
+          const memberName = `${member?.user?.first_name || ""} ${member?.user?.last_name || ""}`.trim() || "Unknown";
+          successMembers.push(memberName);
+
+        } catch (error: any) {
+          console.error("Error assigning scenario to member:", error);
+          const memberName = `${member?.user?.first_name || ""} ${member?.user?.last_name || ""}`.trim() || "Unknown";
+          failedMembers.push(memberName);
+        }
+      }
+
+      // Show results
+      if (successMembers.length > 0) {
+        showToast.success(`Scenario assigned to ${successMembers.join(", ")}`);
+      }
       
-      // Reset and close dialog
-      setScenarioData({ mode: "", persona: "" });
+      if (failedMembers.length > 0) {
+        showToast.error(`Failed to assign scenario to ${failedMembers.join(", ")}`);
+      }
+
+      // Refresh scenario dashboard data after any assignment attempt
+      // This ensures the dashboard reflects the current state even if some assignments failed
+      if (selectedTeam?.company_team_id && successMembers.length > 0) {
+        await getScenarioDashboard();
+      }
+
+      // Reset and close dialog only if all succeeded
+      if (failedMembers.length === 0) {
+        setScenarioData({ mode: "", persona: "", description: "", timeLimit: 7, message: "" });
+        setScenarioStep(1);
+        setSelectedAdditionalMembers([]);
       setIsAssignScenarioDialogOpen(false);
       setSelectedMemberForScenario(null);
+      }
     } catch (error) {
       console.error("Error assigning scenario:", error);
       showToast.error("Failed to assign scenario");
     } finally {
       setIsAssigningScenario(false);
     }
+  }
+
+  const toggleAdditionalMember = (memberId: number) => {
+    setSelectedAdditionalMembers(prev => 
+      prev.includes(memberId) 
+        ? prev.filter(id => id !== memberId)
+        : [...prev, memberId]
+    );
+  }
+
+  const formatText = (text: string | undefined): string => {
+    if (!text) return "";
+    return text
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+      .trim();
   }
 
   const fetchPersonaDetails = async (personaId: string) => {
@@ -719,6 +837,39 @@ export function Teams() {
       showToast.error("Failed to load persona details");
     } finally {
       setLoadingPersonaDetails(false);
+    }
+  }
+
+  const getScenarioDashboard = async () => {
+    if (!selectedTeam?.company_team_id) {
+      setScenarioDashboardData(null);
+      setScenarioDashboardError(null);
+      return;
+    }
+
+    // Prevent concurrent calls
+    if (loadingScenarioDashboard) return;
+
+    setLoadingScenarioDashboard(true);
+    setScenarioDashboardError(null);
+    
+    try {
+      // GET request with team_id as query parameter
+      const response = await Get(`${apis.scenarios_dashboard_manager}?team_id=${selectedTeam.company_team_id}`);
+      
+      if (response) {
+        setScenarioDashboardData(response);
+      } else {
+        setScenarioDashboardData(null);
+        setScenarioDashboardError("No data received");
+      }
+    } catch (error: any) {
+      console.error("Error fetching scenario dashboard:", error);
+      setScenarioDashboardData(null);
+      setScenarioDashboardError(error?.response?.data?.detail || "Failed to fetch scenario data");
+      // Don't show toast on every error to avoid spam, only show on user-initiated retries
+    } finally {
+      setLoadingScenarioDashboard(false);
     }
   }
 
@@ -753,6 +904,15 @@ export function Teams() {
       setSelectedGraphMember(null);
     }
   }, [selectedTeam?.company_team_id, selectedMode, modeIds[selectedMode]])
+
+  useEffect(() => {
+    if (selectedTeam?.company_team_id) {
+      getScenarioDashboard();
+    } else {
+      setScenarioDashboardData(null);
+      setScenarioDashboardError(null);
+    }
+  }, [selectedTeam?.company_team_id])
 
   useEffect(() => {
     fetchInteractionModes();
@@ -1104,6 +1264,7 @@ export function Teams() {
                 : null))
             }
           </Card >
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Left Side - Team Members */}
             <Card>
@@ -1114,10 +1275,52 @@ export function Teams() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {teamMembers?.length ? teamMembers.map((member: any, index: number) => {
-                  // Use member_id as primary key, fallback to index if not available
-                  const uniqueKey = member?.member_id || member?.user?.user_id || `member-${index}`;
-                  return (
+                {teamMembers?.length ? (() => {
+                  // Sort team members by overall score (descending), then by sessions (descending) as tiebreaker
+                  const sortedMembers = [...teamMembers].sort((a: any, b: any) => {
+                    const team = Array.isArray(data) ? data.find((t) => t?.company_team_id === selectedTeam?.company_team_id) : null;
+                    
+                    // Helper function to calculate overall score and sessions for a member
+                    const calculateMemberStats = (member: any) => {
+                      const targetMember = team?.members?.find((val) => val?.member_id === member?.member_id);
+                      let totalWeightedScore = 0;
+                      let totalSessions = 0;
+                      let sessionsWithScore = 0;
+                      
+                      if (targetMember && Array.isArray(targetMember?.performance_by_mode)) {
+                        targetMember.performance_by_mode.forEach((mode: any) => {
+                          const sessionCount = Number(mode?.session_count) || 0;
+                          const avgScore = typeof mode?.average_overall_score === 'number' ? mode.average_overall_score : null;
+                          
+                          totalSessions += sessionCount;
+                          
+                          if (sessionCount > 0 && avgScore !== null) {
+                            totalWeightedScore += avgScore * sessionCount;
+                            sessionsWithScore += sessionCount;
+                          }
+                        });
+                      }
+                      
+                      const overallScore = sessionsWithScore > 0 ? totalWeightedScore / sessionsWithScore : 0;
+                      return { overallScore, totalSessions };
+                    };
+                    
+                    const statsA = calculateMemberStats(a);
+                    const statsB = calculateMemberStats(b);
+                    
+                    // Sort by overall score (descending)
+                    if (statsA.overallScore !== statsB.overallScore) {
+                      return statsB.overallScore - statsA.overallScore;
+                    }
+                    
+                    // If scores are equal, sort by sessions (descending)
+                    return statsB.totalSessions - statsA.totalSessions;
+                  });
+                  
+                  return sortedMembers.map((member: any, index: number) => {
+                    // Use member_id as primary key, fallback to index if not available
+                    const uniqueKey = member?.member_id || member?.user?.user_id || `member-${index}`;
+                    return (
                   <div
                       key={uniqueKey}
                     className="w-full flex items-center justify-between gap-4 p-4 border rounded-lg"
@@ -1126,31 +1329,76 @@ export function Teams() {
                       className="w-full flex items-center justify-between cursor-pointer"
                       onClick={() => setSelectMember(member?.member_id)}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
                           <User className="w-5 h-5 text-primary" />
                         </div>
-                        <div>
-                          <div className="font-medium">{member?.user?.first_name}&nbsp;{member?.user?.last_name}</div>
-                          <div className="text-sm text-muted-foreground">{member?.user?.email}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium truncate">{member?.user?.first_name}&nbsp;{member?.user?.last_name}</div>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="text-xs text-muted-foreground truncate cursor-help">
+                                  {member?.user?.email}
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{member?.user?.email}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </div>
-                      <div className="text-right flex flex-col items-center">
-                        <div className="font-bold text-lg text-primary">
-                          {Array.isArray(data) && data.map((team, teamIdx) => (
-                            team?.company_team_id === selectedTeam?.company_team_id ?
-                              <div key={`team-${teamIdx}`}>
-                                {(() => {
-                                  const targetMember = team?.members?.find((val) => val?.member_id === member?.member_id);
-                                  const totalSessions = Array.isArray(targetMember?.performance_by_mode)
-                                    ? targetMember.performance_by_mode.reduce((sum, itm) => sum + (Number(itm?.session_count) || 0), 0)
-                                    : 0;
-                                  return totalSessions;
-                                })()}
-                              </div>
-                              : null))}
+                      <div className="text-right flex flex-col items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-4">
+                          {(() => {
+                            const team = Array.isArray(data) ? data.find((t) => t?.company_team_id === selectedTeam?.company_team_id) : null;
+                            const targetMember = team?.members?.find((val) => val?.member_id === member?.member_id);
+                            
+                            // Calculate overall score (weighted average) and total sessions
+                            let totalWeightedScore = 0;
+                            let totalSessions = 0;
+                            let sessionsWithScore = 0;
+                            
+                            if (targetMember && Array.isArray(targetMember?.performance_by_mode)) {
+                              targetMember.performance_by_mode.forEach((mode: any) => {
+                                const sessionCount = Number(mode?.session_count) || 0;
+                                const avgScore = typeof mode?.average_overall_score === 'number' ? mode.average_overall_score : null;
+                                
+                                // Always count sessions
+                                totalSessions += sessionCount;
+                                
+                                // Only include in score calculation if score exists (including 0)
+                                if (sessionCount > 0 && avgScore !== null) {
+                                  totalWeightedScore += avgScore * sessionCount;
+                                  sessionsWithScore += sessionCount;
+                                }
+                              });
+                            }
+                            
+                            const overallScore = sessionsWithScore > 0 ? totalWeightedScore / sessionsWithScore : 0;
+                            
+                            return (
+                              <>
+                                {/* Overall Score */}
+                                <div className="flex flex-col items-center">
+                                  <div className="font-bold text-lg text-primary">
+                                    {overallScore.toFixed(1)}
+                                  </div>
+                                  <div className="text-sm text-muted-foreground">Overall Score</div>
+                                </div>
+                                
+                                {/* Sessions */}
+                                <div className="flex flex-col items-center">
+                                  <div className="font-bold text-lg text-primary">
+                                    {totalSessions}
+                                  </div>
+                                  <div className="text-sm text-muted-foreground">Sessions</div>
+                                </div>
+                              </>
+                            );
+                          })()}
                         </div>
-                        <div className="text-sm text-muted-foreground">{member?.user?.sessions} sessions</div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1164,7 +1412,7 @@ export function Teams() {
                           handleGiveScenario(member); 
                         }}
                       >
-                        <FileText className="w-4 h-4" />
+                        <Plus className="w-4 h-4" />
                       </Button>
                     <Button
                       title="Delete"
@@ -1182,7 +1430,8 @@ export function Teams() {
                     </div>
                   </div>
                   );
-                }) : null}
+                  });
+                })() : null}
               </CardContent>
             </Card>
 
@@ -1220,7 +1469,7 @@ export function Teams() {
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis dataKey="month" className="text-muted-foreground" />
                       <YAxis domain={[0, 100]} className="text-muted-foreground" />
-                      <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }} />
+                      <RechartsTooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }} />
                           {teamMembersGraph.members.map((member: any, index: number) => {
                             const memberKey = member.user_name || `Member ${member.member_id}`;
                             // Generate colors for each member - using a diverse color palette
@@ -1387,6 +1636,341 @@ export function Teams() {
             </Card>
           </div>
 
+          {/* Scenario Dashboard */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="w-5 h-5" />
+                Scenarios
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {loadingScenarioDashboard ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent"></div>
+                    <p className="text-sm text-muted-foreground">Loading scenario data...</p>
+                  </div>
+                </div>
+              ) : scenarioDashboardError ? (
+                <div className="text-center py-8">
+                  <div className="flex flex-col items-center gap-2">
+                    <AlertCircle className="h-8 w-8 text-destructive" />
+                    <p className="text-sm text-destructive font-medium">{scenarioDashboardError}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={getScenarioDashboard}
+                      className="mt-2"
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                </div>
+              ) : scenarioDashboardData ? (
+                <>
+                  {/* Statistics Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Total Assigned */}
+                    <div className="p-4 rounded-lg border bg-yellow-50 border-yellow-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-black/70">Total Assigned</p>
+                        <Target className="h-4 w-4 text-black/60" />
+                      </div>
+                      <p className="text-2xl font-bold text-black">{scenarioDashboardData?.total_assigned || 0}</p>
+                    </div>
+
+                    {/* Completed Count */}
+                    <div className="p-4 rounded-lg border bg-green-50 border-green-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-black/70">Completed</p>
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-black">{scenarioDashboardData?.completed_count || 0}</p>
+                    </div>
+
+                    {/* Pending Count */}
+                    <div className="p-4 rounded-lg border bg-orange-50 border-orange-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-black/70">Pending</p>
+                        <Clock className="h-4 w-4 text-orange-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-black">{scenarioDashboardData?.pending_count || 0}</p>
+                    </div>
+
+                    {/* Completion Rate */}
+                    <div className="p-4 rounded-lg border bg-blue-50 border-blue-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-black/70">Completion Rate</p>
+                        <Percent className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-black">{scenarioDashboardData?.completion_rate || 0}%</p>
+                    </div>
+                  </div>
+
+                  {/* Assigned Scenarios Listing */}
+                  {scenarioDashboardData?.assigned_scenarios && scenarioDashboardData.assigned_scenarios.length > 0 ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between border-b border-border pb-2">
+                        <h3 className="text-lg font-semibold text-black">Assigned Scenarios</h3>
+                        <Badge variant="secondary" className="bg-yellow-100 text-black border-yellow-200">
+                          {scenarioDashboardData.assigned_scenarios.length} {scenarioDashboardData.assigned_scenarios.length === 1 ? 'scenario' : 'scenarios'}
+                        </Badge>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        {(() => {
+                          // Group scenarios by user_id
+                          const scenariosByUser: Record<string, any[]> = {};
+                          scenarioDashboardData.assigned_scenarios.forEach((scenario: any) => {
+                            const userId = scenario.user_id;
+                            if (!scenariosByUser[userId]) {
+                              scenariosByUser[userId] = [];
+                            }
+                            scenariosByUser[userId].push(scenario);
+                          });
+
+                          // Get unique users
+                          const uniqueUsers = Object.keys(scenariosByUser).map(userId => {
+                            const userScenarios = scenariosByUser[userId];
+                            const firstScenario = userScenarios[0];
+                            return {
+                              userId,
+                              user_name: firstScenario.user_name,
+                              user_email: firstScenario.user_email,
+                              scenarioCount: userScenarios.length,
+                              scenarios: userScenarios
+                            };
+                          });
+
+                          return uniqueUsers.map((user, index) => {
+                            const handleUserClick = () => {
+                              setSelectedUserScenarios(user.scenarios);
+                              setSelectedUserInfo({
+                                name: user.user_name || "Unknown User",
+                                email: user.user_email || "",
+                                userId: user.userId
+                              });
+                              setIsUserScenariosDialogOpen(true);
+                            };
+
+                            return (
+                              <div
+                                key={user.userId || index}
+                                onClick={handleUserClick}
+                                className="p-4 rounded-lg border border-border bg-card hover:border-yellow-200 hover:shadow-md transition-all duration-200 cursor-pointer"
+                              >
+                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                                  {/* Left Side - User Info */}
+                                  <div className="flex items-start gap-4 flex-1">
+                                    <div className="p-2 rounded-lg bg-yellow-100 flex-shrink-0">
+                                      <UserCircle className="h-5 w-5 text-black" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <p className="font-semibold text-base text-black">{user.user_name || "Unknown User"}</p>
+                                      </div>
+                                      <p className="text-sm text-black/60">{user.user_email || ""}</p>
+                                    </div>
+                                  </div>
+
+                                  {/* Right Side - Scenario Count */}
+                                  <div className="flex flex-col items-end gap-2 sm:flex-shrink-0">
+                                    <div className="text-right">
+                                      <div className="flex items-center justify-end gap-1 mb-1">
+                                        <Target className="h-4 w-4 text-black/60" />
+                                        <p className="text-xs font-medium text-black/60">Scenarios Assigned</p>
+                                      </div>
+                                      <Badge 
+                                        variant="outline" 
+                                        className="text-sm font-semibold border-yellow-300 bg-yellow-50 text-yellow-700 px-3 py-1"
+                                      >
+                                        {user.scenarioCount} {user.scenarioCount === 1 ? 'scenario' : 'scenarios'}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 border-t border-border">
+                      <div className="flex flex-col items-center gap-2">
+                        <Target className="h-8 w-8 text-muted-foreground opacity-50" />
+                        <p className="text-sm text-muted-foreground">No scenarios assigned yet</p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>No scenario data available</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* User Scenarios Details Dialog */}
+          <Dialog open={isUserScenariosDialogOpen} onOpenChange={setIsUserScenariosDialogOpen}>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <UserCircle className="h-5 w-5" />
+                  <span>Scenarios for {selectedUserInfo?.name || "User"}</span>
+                </DialogTitle>
+              </DialogHeader>
+              
+              {selectedUserInfo && (
+                <div className="space-y-4">
+                  {/* User Info */}
+                  <div className="p-4 rounded-lg border bg-yellow-50 border-yellow-200">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-yellow-100">
+                        <UserCircle className="h-6 w-6 text-black" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-base text-black">{selectedUserInfo.name}</p>
+                        <p className="text-sm text-black/60">{selectedUserInfo.email}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Scenarios List */}
+                  <div className="space-y-3">
+                    <h3 className="text-lg font-semibold text-black">
+                      All Scenarios ({selectedUserScenarios.length})
+                    </h3>
+                    
+                    {selectedUserScenarios.map((scenario: any, index: number) => (
+                      <div
+                        key={scenario.scenario_id || index}
+                        className="p-4 rounded-lg border border-border bg-card hover:border-yellow-200 hover:shadow-md transition-all duration-200"
+                      >
+                        <div className="space-y-3">
+                          {/* Scenario Header */}
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Badge 
+                                  variant="outline"
+                                  className={`text-xs ${
+                                    scenario.is_completed
+                                      ? "border-green-300 bg-green-50 text-green-700"
+                                      : "border-orange-300 bg-orange-50 text-orange-700"
+                                  }`}
+                                >
+                                  {scenario.is_completed ? (
+                                    <>
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      Completed
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Clock className="h-3 w-3 mr-1" />
+                                      Pending
+                                    </>
+                                  )}
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Scenario Details Grid */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Created At */}
+                            <div className="flex items-center gap-2 text-sm">
+                              <Calendar className="h-4 w-4 text-black/60" />
+                              <div>
+                                <p className="text-xs text-black/60">Created At</p>
+                                <p className="font-medium text-black">
+                                  {scenario.created_at 
+                                    ? new Date(scenario.created_at).toLocaleDateString('en-US', { 
+                                        year: 'numeric', 
+                                        month: 'long', 
+                                        day: 'numeric' 
+                                      })
+                                    : "N/A"}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Time Limit */}
+                            <div className="flex items-center gap-2 text-sm">
+                              <Target className="h-4 w-4 text-black/60" />
+                              <div>
+                                <p className="text-xs text-black/60">Time Limit</p>
+                                <p className="font-medium text-black">{scenario.time_limit_days || 0} days</p>
+                              </div>
+                            </div>
+
+                            {/* Mode */}
+                            <div className="flex items-center gap-2 text-sm">
+                              <Target className="h-4 w-4 text-black/60" />
+                              <div>
+                                <p className="text-xs text-black/60">Mode</p>
+                                <p className="font-medium text-black">
+                                  {scenario.mode?.name || scenario.mode_name || scenario.mode || "N/A"}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Persona */}
+                            <div className="flex items-center gap-2 text-sm">
+                              <UserCircle className="h-4 w-4 text-black/60" />
+                              <div>
+                                <p className="text-xs text-black/60">Persona</p>
+                                <p className="font-medium text-black">
+                                  {scenario.persona?.name || scenario.persona_name || scenario.persona || "N/A"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-sm">
+                              <Clock className="h-4 w-4 text-black/60" />
+                              <div>
+                                <p className="text-xs text-black/60">Days Remaining</p>
+                                <p className="font-medium text-black">{scenario.days_remaining || 0} days</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Scenario Message (Description) */}
+                          {scenario.scenario && (
+                            <div className="mt-4 p-3 rounded-lg border bg-yellow-50/30 border-yellow-200">
+                              <div className="flex items-start gap-2">
+                                <FileText className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
+                                <div className="flex-1">
+                                  <p className="text-xs font-medium text-black/60 mb-1">Scenario Message</p>
+                                  <p className="text-sm text-black leading-relaxed">{scenario.scenario}</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Manager Message */}
+                          {scenario.message && (
+                            <div className="mt-2 p-3 rounded-lg border bg-blue-50/30 border-blue-200">
+                              <div className="flex items-start gap-2">
+                                <Info className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
+                                <div className="flex-1">
+                                  <p className="text-xs font-medium text-black/60 mb-1">Message</p>
+                                  <p className="text-sm text-black leading-relaxed italic">"{scenario.message}"</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
           {/* Place the AlertDialog here so it only renders in detail view */}
           <AlertDialog open={isDeleteMemberDialogOpen} onOpenChange={(open) => {
             setIsDeleteMemberDialogOpen(open);
@@ -1426,65 +2010,85 @@ export function Teams() {
             setIsAssignScenarioDialogOpen(open);
             if (!open) {
               setSelectedMemberForScenario(null);
-              setScenarioData({ mode: "", persona: "" });
+              setScenarioData({ mode: "", persona: "", description: "", timeLimit: 7, message: "" });
+              setScenarioStep(1);
+              setSelectedAdditionalMembers([]);
             }
           }}>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Assign Scenario</DialogTitle>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader className="pb-4">
+                <DialogTitle className="text-2xl font-bold">Assign Scenario</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
-                {selectedMemberForScenario && (
-                  <div className="p-4 bg-muted rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Assigning scenario to:</p>
-                    <p className="font-semibold text-lg">
-                      {selectedMemberForScenario?.user?.first_name} {selectedMemberForScenario?.user?.last_name}
-                    </p>
-                    <p className="text-sm text-muted-foreground">{selectedMemberForScenario?.user?.email}</p>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="scenario-mode">Mode *</Label>
+              
+              {scenarioStep === 1 ? (
+                // Step 1: Select mode, persona, and write scenario
+                <div className="space-y-6 py-2">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="space-y-3">
+                      <Label htmlFor="scenario-mode" className="text-base font-semibold">
+                        Mode <span className="text-destructive">*</span>
+                      </Label>
                   <Select
                     value={scenarioData.mode}
                     onValueChange={(value) => setScenarioData(prev => ({ ...prev, mode: value }))}
                   >
-                    <SelectTrigger id="scenario-mode" className={!scenarioData.mode ? "border-red-500" : ""}>
-                      <SelectValue placeholder="Select mode" />
+                        <SelectTrigger 
+                          id="scenario-mode" 
+                          className={`h-12 text-base ${!scenarioData.mode ? "border-red-500" : ""}`}
+                        >
+                          <SelectValue placeholder="Select a mode" />
                     </SelectTrigger>
-                    <SelectContent>
-                      {modesData.map((mode) => (
-                        <SelectItem key={mode?.mode_id || mode?.id} value={(mode?.mode_id || mode?.id).toString()}>
+                        <SelectContent className="max-h-[300px]">
+                          {modesData.length > 0 ? (
+                            modesData.map((mode) => (
+                              <SelectItem 
+                                key={mode?.mode_id || mode?.id} 
+                                value={(mode?.mode_id || mode?.id).toString()}
+                                className="text-base py-3"
+                              >
                           {mode?.name || mode?.mode_name}
                         </SelectItem>
-                      ))}
+                            ))
+                          ) : (
+                            <div className="p-4 text-center text-muted-foreground">No modes available</div>
+                          )}
                     </SelectContent>
                   </Select>
+                      {scenarioData.mode && (
+                        <p className="text-sm text-muted-foreground">
+                          Selected: {modesData.find(m => (m?.mode_id || m?.id).toString() === scenarioData.mode)?.name || modesData.find(m => (m?.mode_id || m?.id).toString() === scenarioData.mode)?.mode_name}
+                        </p>
+                      )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="scenario-persona">Persona *</Label>
+                    <div className="space-y-3">
+                      <Label htmlFor="scenario-persona" className="text-base font-semibold">
+                        Persona <span className="text-destructive">*</span>
+                      </Label>
                   <Select
                     value={scenarioData.persona}
                     onValueChange={(value) => setScenarioData(prev => ({ ...prev, persona: value }))}
                   >
-                    <SelectTrigger id="scenario-persona" className={!scenarioData.persona ? "border-red-500" : ""}>
-                      <SelectValue placeholder="Select persona" />
+                        <SelectTrigger 
+                          id="scenario-persona" 
+                          className={`h-12 text-base ${!scenarioData.persona ? "border-red-500" : ""}`}
+                        >
+                          <SelectValue placeholder="Select a persona" />
                     </SelectTrigger>
-                    <SelectContent>
-                      {personasData.map((persona) => (
+                        <SelectContent className="max-h-[300px]">
+                          {personasData.length > 0 ? (
+                            personasData.map((persona) => (
                         <div key={persona?.persona_id || persona?.id} className="relative group">
                           <SelectItem 
                             value={(persona?.persona_id || persona?.id).toString()}
-                            className="pr-10"
+                                  className="pr-10 text-base py-3"
                           >
                             {persona?.name || persona?.persona_name}
                           </SelectItem>
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0 text-black hover:text-black"
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -1494,120 +2098,396 @@ export function Teams() {
                             <Info className="h-4 w-4" />
                           </Button>
                         </div>
-                      ))}
+                            ))
+                          ) : (
+                            <div className="p-4 text-center text-muted-foreground">No personas available</div>
+                          )}
                     </SelectContent>
                   </Select>
+                      {scenarioData.persona && (
+                        <p className="text-sm text-muted-foreground">
+                          Selected: {personasData.find(p => (p?.persona_id || p?.id).toString() === scenarioData.persona)?.name || personasData.find(p => (p?.persona_id || p?.id).toString() === scenarioData.persona)?.persona_name}
+                        </p>
+                      )}
                 </div>
 
+                    <div className="space-y-3">
+                      <Label htmlFor="scenario-time-limit" className="text-base font-semibold">
+                        Time Limit (Days) <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        id="scenario-time-limit"
+                        type="number"
+                        min="1"
+                        value={scenarioData.timeLimit}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || 0;
+                          setScenarioData(prev => ({ ...prev, timeLimit: value > 0 ? value : 0 }));
+                        }}
+                        className={`h-12 text-base ${!scenarioData.timeLimit || scenarioData.timeLimit < 1 ? "border-red-500" : ""}`}
+                      />
+                      {scenarioData.timeLimit && scenarioData.timeLimit >= 1 ? (
+                        <p className="text-sm text-muted-foreground">
+                          Active for {scenarioData.timeLimit} {scenarioData.timeLimit === 1 ? 'day' : 'days'}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-destructive">Time limit is required (minimum 1 day)</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label htmlFor="scenario-description" className="text-base font-semibold">
+                      Scenario <span className="text-destructive">*</span>
+                    </Label>
+                    <Textarea
+                      id="scenario-description"
+                      placeholder="Write your scenario description here..."
+                      value={scenarioData.description}
+                      onChange={(e) => setScenarioData(prev => ({ ...prev, description: e.target.value }))}
+                      className={`min-h-[200px] text-base resize-none ${!scenarioData.description.trim() ? "border-red-500" : ""}`}
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      {scenarioData.description.length} characters
+                    </p>
+                  </div>
+
+                  <div className="pt-4 border-t">
                 <Button
-                  className="w-full"
+                      className="w-full h-12 text-base font-semibold"
+                      onClick={handleProceed}
+                      disabled={!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1}
+                    >
+                      Proceed
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                // Step 2: Assign to members
+                <div className="space-y-6 py-2">
+                  {selectedMemberForScenario && (
+                    <div className="p-6 bg-muted/50 rounded-lg border">
+                      <p className="text-sm text-muted-foreground mb-2 font-medium">Assigning scenario to:</p>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-12 w-12">
+                          <AvatarImage src={selectedMemberForScenario?.user?.avatar} />
+                          <AvatarFallback>
+                            {selectedMemberForScenario?.user?.first_name?.[0]}{selectedMemberForScenario?.user?.last_name?.[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-semibold text-xl">
+                            {selectedMemberForScenario?.user?.first_name} {selectedMemberForScenario?.user?.last_name}
+                          </p>
+                          <p className="text-sm text-muted-foreground">{selectedMemberForScenario?.user?.email}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-base font-semibold mb-3 block">
+                        Assign same scenario to other team members
+                      </Label>
+                      <div className="border rounded-lg p-4 max-h-[400px] overflow-y-auto space-y-2">
+                        {teamMembers && teamMembers.length > 0 ? (
+                          teamMembers
+                            .filter((member: any) => {
+                              const memberId = member?.member_id || member?.user?.user_id;
+                              const selectedId = selectedMemberForScenario?.member_id || selectedMemberForScenario?.user?.user_id;
+                              return memberId !== selectedId;
+                            })
+                            .map((member: any, index: number) => {
+                              const memberId = (member?.member_id || member?.user?.user_id) as number;
+                              const isSelected = selectedAdditionalMembers.includes(memberId);
+                              return (
+                                <div
+                                  key={memberId || `member-${index}`}
+                                  className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
+                                    isSelected 
+                                      ? "bg-primary/10 border-primary" 
+                                      : "hover:bg-muted/50"
+                                  }`}
+                                  onClick={() => toggleAdditionalMember(memberId)}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <Avatar className="h-10 w-10">
+                                      <AvatarImage src={member?.user?.avatar} />
+                                      <AvatarFallback>
+                                        {member?.user?.first_name?.[0]}{member?.user?.last_name?.[0]}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                      <p className="font-medium">
+                                        {member?.user?.first_name} {member?.user?.last_name}
+                                      </p>
+                                      <p className="text-sm text-muted-foreground">{member?.user?.email}</p>
+                                    </div>
+                                  </div>
+                                  {isSelected && (
+                                    <Check className="h-5 w-5 text-primary" />
+                                  )}
+                                </div>
+                              );
+                            })
+                        ) : (
+                          <div className="p-4 text-center text-muted-foreground">
+                            No other team members available
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label htmlFor="scenario-message" className="text-base font-semibold">
+                      Message (Optional)
+                    </Label>
+                    <Textarea
+                      id="scenario-message"
+                      placeholder="Add a message for the assigned members..."
+                      value={scenarioData.message}
+                      onChange={(e) => setScenarioData(prev => ({ ...prev, message: e.target.value }))}
+                      className="min-h-[100px] text-base resize-none"
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      {scenarioData.message.length} characters
+                    </p>
+                  </div>
+
+                  <div className="pt-4 border-t flex gap-3">
+                    <Button
+                      variant="outline"
+                      className="flex-1 h-12 text-base font-semibold"
+                      onClick={() => setScenarioStep(1)}
+                      disabled={isAssigningScenario}
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      className="flex-1 h-12 text-base font-semibold"
                   onClick={handleAssignScenario}
-                  disabled={isAssigningScenario || !scenarioData.mode || !scenarioData.persona}
+                      disabled={isAssigningScenario}
                 >
-                  {isAssigningScenario ? "Assigning..." : "Assign Scenario"}
+                      {isAssigningScenario ? "Assigning Scenario..." : "Assign Scenario"}
                 </Button>
               </div>
+                </div>
+              )}
             </DialogContent>
           </Dialog>
 
           {/* Persona Details Dialog */}
           <Dialog open={isPersonaDetailsOpen} onOpenChange={setIsPersonaDetailsOpen}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Persona Details</DialogTitle>
+            <DialogContent className="max-w-5xl max-h-[92vh] overflow-hidden p-0 border border-border shadow-2xl bg-background">
+              {/* Header */}
+              <div className="sticky top-0 z-10 border-b border-border bg-background px-6 py-5">
+                <DialogHeader className="pb-0">
+                  <DialogTitle className="text-2xl font-semibold tracking-tight flex items-center gap-2.5">
+                    <div className="p-1.5 rounded-lg bg-yellow-100">
+                      <Sparkles className="h-4 w-4 text-black" />
+                    </div>
+                    <span className="text-black">Persona Profile</span>
+                  </DialogTitle>
               </DialogHeader>
+              </div>
+
+              <div className="overflow-y-auto max-h-[calc(92vh-80px)] px-6 py-6 bg-background">
               {loadingPersonaDetails ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="text-muted-foreground">Loading persona details...</div>
+                  <div className="flex items-center justify-center py-20">
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="relative">
+                        <div className="animate-spin rounded-full h-10 w-10 border-2 border-yellow-200"></div>
+                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-black absolute top-0 left-0"></div>
+                      </div>
+                      <div className="text-sm font-medium text-black/70 animate-pulse">Loading persona details...</div>
+                    </div>
                 </div>
               ) : selectedPersonaDetails ? (
-                <div className="space-y-6">
-                  {/* Profile Section */}
-                  <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
-                    <Avatar className="h-20 w-20">
-                      <AvatarImage src={selectedPersonaDetails?.profile_pic} alt={selectedPersonaDetails?.name} />
-                      <AvatarFallback className="text-xl">
+                  <div className="space-y-8 animate-in fade-in-50 duration-500">
+                    {/* Profile Header Section */}
+                    <div className="relative group">
+                      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-yellow-100 to-yellow-50 border border-yellow-200 shadow-lg p-8">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                          <div className="relative group/avatar flex-shrink-0">
+                            <Avatar className="relative h-28 w-28 border-4 border-yellow-50 shadow-xl ring-2 ring-yellow-200">
+                              <AvatarImage 
+                                src={selectedPersonaDetails?.profile_pic} 
+                                alt={selectedPersonaDetails?.name}
+                                className="object-cover"
+                              />
+                              <AvatarFallback className="text-3xl font-bold bg-gradient-to-br from-yellow-600 to-yellow-700 text-white">
                         {selectedPersonaDetails?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                    <div>
-                      <h3 className="text-2xl font-bold">{selectedPersonaDetails?.name}</h3>
-                      <Badge variant="secondary" className="mt-1">
-                        {selectedPersonaDetails?.gender}
+                            <div className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-black border-[3px] border-yellow-50 flex items-center justify-center shadow-lg ring-2 ring-yellow-200">
+                              <User className="h-3.5 w-3.5 text-white" />
+                            </div>
+                          </div>
+                          <div className="flex-1 pt-1 min-w-0">
+                            <h3 className="text-3xl font-bold tracking-tight mb-3 text-black break-words">
+                              {formatText(selectedPersonaDetails?.name)}
+                            </h3>
+                            <div className="flex items-center gap-2.5 flex-wrap">
+                              {selectedPersonaDetails?.gender && (
+                                <Badge 
+                                  variant="secondary" 
+                                  className="px-3 py-1.5 text-xs font-medium bg-yellow-100 text-black border-yellow-200 hover:bg-yellow-200 transition-all duration-200 hover:scale-105"
+                                >
+                                  {formatText(selectedPersonaDetails?.gender)}
                       </Badge>
+                              )}
+                              {selectedPersonaDetails?.ai_role && (
+                                <Badge 
+                                  variant="outline" 
+                                  className="px-3 py-1.5 text-xs font-medium border-yellow-300 bg-yellow-50 hover:bg-yellow-100 transition-all duration-200 hover:scale-105"
+                                >
+                                  <Briefcase className="h-3 w-3 mr-1.5 text-black" />
+                                  <span className="break-words text-black">{formatText(selectedPersonaDetails?.ai_role?.name)}</span>
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                     </div>
                   </div>
 
-                  {/* Details Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Details Grid with modern cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {/* Industry */}
                     {selectedPersonaDetails?.industry && (
-                      <div className="p-4 border rounded-lg">
-                        <p className="text-sm text-muted-foreground mb-1">Industry</p>
-                        <p className="font-semibold">{selectedPersonaDetails?.industry?.name}</p>
+                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
+                          <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                          <CardContent className="relative p-5">
+                            <div className="flex items-start gap-4">
+                              <div className="p-2.5 rounded-xl bg-yellow-100 group-hover:bg-yellow-200 transition-all duration-300 shadow-sm flex-shrink-0">
+                                <Factory className="h-5 w-5 text-black" />
                       </div>
-                    )}
-
-                    {/* AI Role */}
-                    {selectedPersonaDetails?.ai_role && (
-                      <div className="p-4 border rounded-lg">
-                        <p className="text-sm text-muted-foreground mb-1">Role</p>
-                        <p className="font-semibold">{selectedPersonaDetails?.ai_role?.name}</p>
+                              <div className="flex-1 min-w-0 pt-0.5">
+                                <p className="text-[10px] font-semibold text-black/60 uppercase tracking-wider mb-2">Industry</p>
+                                <p className="font-semibold text-base leading-snug text-black break-words">{formatText(selectedPersonaDetails?.industry?.name)}</p>
                       </div>
+                            </div>
+                          </CardContent>
+                        </Card>
                     )}
 
                     {/* Geography */}
                     {selectedPersonaDetails?.geography && (
-                      <div className="p-4 border rounded-lg">
-                        <p className="text-sm text-muted-foreground mb-1">Geography</p>
-                        <p className="font-semibold uppercase">{selectedPersonaDetails?.geography}</p>
+                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
+                          <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                          <CardContent className="relative p-5">
+                            <div className="flex items-start gap-4">
+                              <div className="p-2.5 rounded-xl bg-yellow-100 group-hover:bg-yellow-200 transition-all duration-300 shadow-sm flex-shrink-0">
+                                <MapPin className="h-5 w-5 text-black" />
                       </div>
+                              <div className="flex-1 min-w-0 pt-0.5">
+                                <p className="text-[10px] font-semibold text-black/60 uppercase tracking-wider mb-2">Geography</p>
+                                <p className="font-semibold text-base leading-snug text-black break-words">{formatText(selectedPersonaDetails?.geography)}</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
                     )}
 
                     {/* Plant Size Impact */}
                     {selectedPersonaDetails?.plant_size_impact && (
-                      <div className="p-4 border rounded-lg">
-                        <p className="text-sm text-muted-foreground mb-1">Plant Size</p>
-                        <p className="font-semibold">{selectedPersonaDetails?.plant_size_impact?.name}</p>
+                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
+                          <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                          <CardContent className="relative p-5">
+                            <div className="flex items-start gap-4">
+                              <div className="p-2.5 rounded-xl bg-yellow-100 group-hover:bg-yellow-200 transition-all duration-300 shadow-sm flex-shrink-0">
+                                <Building2 className="h-5 w-5 text-black" />
                       </div>
+                              <div className="flex-1 min-w-0 pt-0.5">
+                                <p className="text-[10px] font-semibold text-black/60 uppercase tracking-wider mb-2">Plant Size</p>
+                                <p className="font-semibold text-base leading-snug text-black break-words">{formatText(selectedPersonaDetails?.plant_size_impact?.name)}</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
                     )}
 
                     {/* Manufacturing Model */}
                     {selectedPersonaDetails?.manufacturing_model && (
-                      <div className="p-4 border rounded-lg">
-                        <p className="text-sm text-muted-foreground mb-1">Manufacturing Model</p>
-                        <p className="font-semibold">{selectedPersonaDetails?.manufacturing_model?.name}</p>
+                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
+                          <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                          <CardContent className="relative p-5">
+                            <div className="flex items-start gap-4">
+                              <div className="p-2.5 rounded-xl bg-yellow-100 group-hover:bg-yellow-200 transition-all duration-300 shadow-sm flex-shrink-0">
+                                <Factory className="h-5 w-5 text-black" />
                       </div>
+                              <div className="flex-1 min-w-0 pt-0.5">
+                                <p className="text-[10px] font-semibold text-black/60 uppercase tracking-wider mb-2">Manufacturing Model</p>
+                                <p className="font-semibold text-base leading-snug text-black break-words">{formatText(selectedPersonaDetails?.manufacturing_model?.name)}</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
                     )}
 
                     {/* Company Size */}
                     {selectedPersonaDetails?.company_size_new && (
-                      <div className="p-4 border rounded-lg">
-                        <p className="text-sm text-muted-foreground mb-1">Company Size</p>
-                        <p className="font-semibold">{selectedPersonaDetails?.company_size_new?.name}</p>
+                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
+                          <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                          <CardContent className="relative p-5">
+                            <div className="flex items-start gap-4">
+                              <div className="p-2.5 rounded-xl bg-yellow-100 group-hover:bg-yellow-200 transition-all duration-300 shadow-sm flex-shrink-0">
+                                <Building className="h-5 w-5 text-black" />
                       </div>
+                              <div className="flex-1 min-w-0 pt-0.5">
+                                <p className="text-[10px] font-semibold text-black/60 uppercase tracking-wider mb-2">Company Size</p>
+                                <p className="font-semibold text-base leading-snug text-black break-words">{formatText(selectedPersonaDetails?.company_size_new?.name)}</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
                     )}
                   </div>
 
-                  {/* Products */}
+                    {/* Products Section */}
                   {selectedPersonaDetails?.persona_products && selectedPersonaDetails?.persona_products?.length > 0 && (
-                    <div className="p-4 border rounded-lg">
-                      <p className="text-sm text-muted-foreground mb-2">Products</p>
-                      <div className="flex flex-wrap gap-2">
+                      <Card className="relative overflow-hidden border border-yellow-200 bg-yellow-50 shadow-lg">
+                        <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/30 via-transparent to-transparent opacity-50"></div>
+                        <CardHeader className="relative pb-4 border-b border-yellow-200">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-yellow-100 shadow-sm">
+                              <Package className="h-5 w-5 text-black" />
+                            </div>
+                            <CardTitle className="text-lg font-semibold tracking-tight text-black">Associated Products</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="relative pt-6">
+                          <div className="flex flex-wrap gap-2.5">
                         {selectedPersonaDetails?.persona_products?.map((personaProduct: any, index: number) => (
-                          <Badge key={index} variant="outline" className="text-sm">
-                            {personaProduct?.product?.name}
+                              <Badge 
+                                key={index} 
+                                variant="secondary" 
+                                className="px-4 py-2 text-sm font-medium bg-yellow-100 text-black border-yellow-200 hover:bg-yellow-200 hover:shadow-md transition-all duration-200 hover:scale-105 cursor-default break-words"
+                              >
+                                {formatText(personaProduct?.product?.name)}
                           </Badge>
                         ))}
                       </div>
-                    </div>
+                        </CardContent>
+                      </Card>
                   )}
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  No persona details available
+                  <div className="text-center py-20">
+                    <div className="flex flex-col items-center gap-4 animate-in fade-in-50 duration-500">
+                      <div className="p-4 rounded-2xl bg-yellow-100">
+                        <Info className="h-8 w-8 text-black/60" />
+                      </div>
+                      <div>
+                        <p className="text-base font-medium text-black mb-1">No persona details available</p>
+                        <p className="text-sm text-black/70">Please try again later</p>
+                      </div>
+                    </div>
                 </div>
               )}
+              </div>
             </DialogContent>
           </Dialog>
         </div >

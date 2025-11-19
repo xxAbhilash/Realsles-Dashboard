@@ -11,6 +11,7 @@ import { Personas } from "@/components/dashboard/Personas";
 import { ManagerProfile } from "@/components/dashboard/ManagerProfile";
 import { Company } from "@/components/dashboard/Company";
 import { Teams } from "@/components/dashboard/Teams";
+import { AssignedScenarios } from "@/components/dashboard/AssignedScenarios";
 import Subscription from "@/components/dashboard/Subscription";
 import { SubscriptionGuard } from "@/components/SubscriptionGuard";
 import { Bell, Search } from "lucide-react";
@@ -64,6 +65,7 @@ export default function Dashboard() {
                 <Route path="/performance" element={<Performance />} />
                 <Route path="/modes" element={<ModesUsed />} />
                 <Route path="/personas" element={<Personas />} />
+                <Route path="/assigned-scenarios" element={<AssignedScenarios />} />
                 {/* Sales Manager Routes */}
                 <Route path="/manager/profile" element={<ManagerProfile />} />
                 <Route path="/manager/company" element={

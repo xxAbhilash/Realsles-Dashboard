@@ -1,134 +1,95 @@
-// User and Subscription Types
-export interface Subscription {
-  subscription_id: string;
-  plan_type: "free" | "starter" | "manager" | "enterprise";
-  billing_cycle: "monthly" | "yearly";
-  credits_per_month: number;
-  monthly_price: number;
-  yearly_price?: number;
-  max_users: number;
-  max_session_duration?: number;
-  status_active: boolean;
-  is_custom: boolean;
-  features: Record<string, any>;
-  created_at: string;
-  updated_at: string;
-}
+import { useState } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { DashboardSidebar } from "@/components/DashboardSidebar";
+import { Profile } from "@/components/dashboard/Profile";
+import Overview from "./Overview";
+import { Sessions } from "@/components/dashboard/Sessions";
+import { Performance } from "@/components/dashboard/Performance";
+import { ModesUsed } from "@/components/dashboard/ModesUsed";
+import { Personas } from "@/components/dashboard/Personas";
+import { ManagerProfile } from "@/components/dashboard/ManagerProfile";
+import { Company } from "@/components/dashboard/Company";
+import { Teams } from "@/components/dashboard/Teams";
+import { AssignedScenarios } from "@/components/dashboard/AssignedScenarios";
+import Subscription from "@/components/dashboard/Subscription";
+import { SubscriptionGuard } from "@/components/SubscriptionGuard";
+import { Bell, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import Header from "@/components/header";
 
-export interface UserSubscription {
-  user_subscription_id: string;
-  subscription: Subscription;
-  user_id: string;
-  subscription_id: string;
-  status_active: boolean;
-  start_date: string;
-  end_date?: string;
-  credits_allocated: number;
-  credits_used: number;
-  credits_remaining: number;
-  sessions_completed: number;
-  time_used: number;
-  created_at: string;
-  updated_at: string;
-}
+export default function Dashboard() {
+  const [userRole, setUserRole] = useState<"sales-rep" | "sales-manager">("sales-rep");
 
-export interface Role {
-  role_id: string;
-  name: string;
-  description?: string;
-  created_at: string;
-  updated_at: string;
-}
+  return (
+    <SidebarProvider>
+      {/* Dashboard background: only dotted frame, covers entire viewport */}
+      <div className="min-h-screen w-full relative overflow-hidden">
+        {/* Dotted frame as full-page background */}
+        <div className="fixed inset-0 -z-20 bg-cover bg-center w-screen h-screen" style={{ backgroundImage: 'url("/AISALES-DOTTED-BG-FRAME.png")', opacity: 0.4 }} />
+        <div className="flex w-full">
+            <div className="fixed w-full top-0 z-50">
+              <Header />
+            </div>
+          <DashboardSidebar userRole={userRole} onRoleChange={setUserRole} />
+          
+          <div className="flex-1 flex flex-col">
+            {/* Header: sticky, shadow, improved spacing, user avatar */}
+            {/* <header className="sticky top-0 z-30 border-b bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/90 shadow-sm">
+              <div className="flex h-16 items-center px-8">
+                <SidebarTrigger />
+                <div className="flex items-center gap-4 ml-auto">
+                  <Button variant="ghost" size="icon" className="relative">
+                    <Bell className="w-5 h-5" />
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-pulse" />
+                  </Button>
+                  <a href={userRole === 'sales-rep' ? '/profile' : '/manager/profile'}>
+                    <Button variant="default" size="sm" className="flex items-center gap-2 bg-primary text-black hover:bg-primary/90">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9-9 9 9M4 10v10a1 1 0 001 1h3m10-11v10a1 1 0 01-1 1h-3m-6 0h6" /></svg>
+                      <span className="hidden md:inline">Home</span>
+                    </Button>
+                  </a>
+                </div>
+              </div>
+            </header> */}
 
-export interface UserData {
-  user_id: string;
-  email: string;
-  first_name: string;
-  last_name: string;
-  phone_number?: string;
-  company_id?: string;
-  role?: Role;
-  user_subscriptions?: UserSubscription[];
-  status_active: boolean;
-  is_verified: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-// Redux State Types
-export interface AuthState {
-  auth: string;
-  user: UserData | {};
-}
-
-// Payment Types
-export interface Payment {
-  payment_id: string;
-  user_id: string;
-  subscription_id: string;
-  amount: string; // API returns as string
-  currency: string;
-  payment_method: string; // API returns as "card" not specific types
-  payment_status: string; // API returns as "paid" not "completed"
-  provider: string; // e.g., "stripe"
-  external_payment_id?: string;
-  payment_date: string;
-  receipt_url?: string;
-  failure_reason?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PaymentMethod {
-  payment_method_id: string;
-  user_id: string;
-  method_type: "credit_card" | "debit_card";
-  card_last_four: string;
-  card_brand: "visa" | "mastercard" | "amex" | "discover";
-  expiry_month: number;
-  expiry_year: number;
-  is_default: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-// Performance Types
-export interface PerformanceByMode {
-  mode_name: string;
-  session_count: number;
-  average_overall_score: number | null;
-  average_objection_handling_and_value_selling: number | null;
-  average_needs_discovery: number | null;
-  average_relationship_building: number | null;
-  average_qualifying_lead?: number | null;
-  average_communication_excellence: number | null;
-  average_negotiation: number | null;
-  average_solution_matching: number | null;
-  average_cross_selling?: number | null;
-  average_sales_closing?: number | null;
-}
-
-export interface MemberPerformance {
-  member_id: string;
-  user_id: string;
-  user?: {
-    user_id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-  };
-  performance_by_mode: PerformanceByMode[];
-  overall_average_score: number;
-}
-
-export interface TeamPerformance {
-  company_team_id: string;
-  name: string;
-  team_average_score: number;
-  members: MemberPerformance[];
-}
-
-// Root State Type
-export interface RootState {
-  auth: AuthState;
+            {/* Main Content */}
+            <main className="flex-1 overflow-auto mt-16">
+              <Routes>
+                {/* Overview Landing Page */}
+                <Route path="/overview" element={<Overview />} />
+                {/* Sales Representative Routes */}
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/sessions" element={<Sessions />} />
+                <Route path="/performance" element={<Performance />} />
+                <Route path="/modes" element={<ModesUsed />} />
+                <Route path="/personas" element={<Personas />} />
+                <Route path="/assigned-scenarios" element={<AssignedScenarios />} />
+                {/* Sales Manager Routes */}
+                <Route path="/manager/profile" element={<ManagerProfile />} />
+                <Route path="/manager/company" element={
+                  <SubscriptionGuard requiredPlan="manager" feature="Company management">
+                    <Company />
+                  </SubscriptionGuard>
+                } />
+                <Route path="/manager/teams" element={
+                  <SubscriptionGuard requiredPlan="manager" feature="Team management">
+                    <Teams />
+                  </SubscriptionGuard>
+                } />
+                {/* Subscription Route */}
+                <Route path="/subscription" element={<Subscription />} />
+                {/* Default Route */}
+                <Route 
+                  path="/" 
+                  element={<Navigate to="/overview" replace />} 
+                />
+              </Routes>
+            </main>
+          </div>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
 }

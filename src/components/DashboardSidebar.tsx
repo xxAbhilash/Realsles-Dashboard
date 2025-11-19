@@ -8,6 +8,7 @@ import {
   Building2,
   LayoutDashboard,
   CreditCard,
+  ClipboardList,
 } from "lucide-react";
 import {
   Sidebar,
@@ -37,6 +38,7 @@ const salesRepItems = [
   { title: "Performance", url: "/performance", icon: BarChart3 },
   { title: "Modes Used", url: "/modes", icon: Target },
   { title: "Personas Used", url: "/personas", icon: Users },
+  { title: "Assigned Scenarios", url: "/assigned-scenarios", icon: ClipboardList },
 ];
 
 const getSalesManagerItems = (user: UserData) => {
@@ -184,9 +186,9 @@ export function DashboardSidebar({ userRole, onRoleChange }: DashboardSidebarPro
               <div className="relative border border-solid shadow-md rounded-[10px] p-4 flex flex-col items-start gap-2">
                 <div>
                   <p className="text-lg font-medium">Upgrade</p>
-                  <p className="text-base leading-[100%]">Get more credits</p>
+                  <p className="text-base leading-[100%]">Get Access upto 3 Personas</p>
                 </div>
-                <NavLink to={"https://mainreal-sales.vercel.app/pricing"} className="w-full border-b-[2px] border-dolid flex items-center justify-center gap-2 rounded hover:bg-[#FFDE5A] !border-[#FFDE5A] !bg-[#060606] !text-[#FFDE5A] !text-base !px-5 !py-2 h-fit" >upgrade your plan<svg width="19" height="15" fill="none" stroke="#FFDE5A">
+                <NavLink to={"https://www.real-sales.com/pricing"} className="w-full border-b-[2px] border-dolid flex items-center justify-center gap-2 rounded hover:bg-[#FFDE5A] !border-[#FFDE5A] !bg-[#060606] !text-[#FFDE5A] !text-base !px-5 !py-2 h-fit" >upgrade your plan<svg width="19" height="15" fill="none" stroke="#FFDE5A">
                   <path stroke="#FFDE5A" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m17.833 7.5-6.25-6.25m6.25 6.25-6.25 6.25m6.25-6.25H6.896m-5.73 0h2.605"></path>
                 </svg>
                 </NavLink>
