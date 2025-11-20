@@ -202,7 +202,7 @@ export function AssignedScenarios() {
       localStorage.setItem("sessionData", JSON.stringify(sessionData));
 
       // Build URL with session_id, persona_data, token, and voice_id as query parameters
-      const baseUrl = "http://localhost:3001/chat/audio";
+      const baseUrl = "https://mainreal-sales.vercel.app/chat/audio";
       
       // Stringify persona_data
       const personaDataString = JSON.stringify(personaData);
