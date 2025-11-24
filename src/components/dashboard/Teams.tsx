@@ -2017,7 +2017,7 @@ export function Teams() {
           }}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader className="pb-4">
-                <DialogTitle className="text-2xl font-bold">AI prompt to Customize the Scenario</DialogTitle>
+                <DialogTitle className="text-2xl font-bold">Assign Scenario</DialogTitle>
               </DialogHeader>
               
               {scenarioStep === 1 ? (
@@ -2138,7 +2138,7 @@ export function Teams() {
 
                   <div className="space-y-3">
                     <Label htmlFor="scenario-description" className="text-base font-semibold">
-                      Scenario <span className="text-destructive">*</span>
+                      AI prompt to Customize the Scenario <span className="text-destructive">*</span>
                     </Label>
                     <Textarea
                       id="scenario-description"
