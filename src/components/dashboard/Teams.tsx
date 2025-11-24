@@ -700,7 +700,7 @@ export function Teams() {
 
   const handleProceed = () => {
     if (!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1) {
-      showToast.error("Please fill in all required fields including time limit");
+      showToast.error("Please fill in all required fields including dealline");
       return;
     }
     setScenarioStep(2);
@@ -708,7 +708,7 @@ export function Teams() {
 
   const handleAssignScenario = async () => {
     if (!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1) {
-      showToast.error("Please fill in all required fields including time limit");
+      showToast.error("Please fill in all required fields including deadline");
       return;
     }
 
@@ -1901,7 +1901,7 @@ export function Teams() {
                             <div className="flex items-center gap-2 text-sm">
                               <Target className="h-4 w-4 text-black/60" />
                               <div>
-                                <p className="text-xs text-black/60">Time Limit</p>
+                                <p className="text-xs text-black/60">Deadline</p>
                                 <p className="font-medium text-black">{scenario.time_limit_days || 0} days</p>
                               </div>
                             </div>
@@ -2017,7 +2017,7 @@ export function Teams() {
           }}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader className="pb-4">
-                <DialogTitle className="text-2xl font-bold">Assign Scenario</DialogTitle>
+                <DialogTitle className="text-2xl font-bold">AI prompt to Customize the Scenario</DialogTitle>
               </DialogHeader>
               
               {scenarioStep === 1 ? (
@@ -2113,7 +2113,7 @@ export function Teams() {
 
                     <div className="space-y-3">
                       <Label htmlFor="scenario-time-limit" className="text-base font-semibold">
-                        Time Limit (Days) <span className="text-destructive">*</span>
+                        Deadline (Days) <span className="text-destructive">*</span>
                       </Label>
                       <Input
                         id="scenario-time-limit"
@@ -2131,7 +2131,7 @@ export function Teams() {
                           Active for {scenarioData.timeLimit} {scenarioData.timeLimit === 1 ? 'day' : 'days'}
                         </p>
                       ) : (
-                        <p className="text-sm text-destructive">Time limit is required (minimum 1 day)</p>
+                        <p className="text-sm text-destructive">Deadline is required (minimum 1 day)</p>
                       )}
                     </div>
                   </div>
