@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Users, Plus, Minus, ChevronDown, Building2, TrendingUp, Calendar, User, BarChart3, Search, X, ArrowLeft, Check, Edit, Trash2, Info, Briefcase, MapPin, Factory, Building, Package, Sparkles, Target, CheckCircle, Clock, Percent, AlertCircle, UserCircle, FileText } from "lucide-react";
+import { Users, Plus, Minus, ChevronDown, Building2, TrendingUp, Calendar, User, BarChart3, Search, X, ArrowLeft, Check, Edit, Trash2, Info, Briefcase, MapPin, Factory, Building, Package, Sparkles, Target, CheckCircle, Clock, Percent, AlertCircle, UserCircle, FileText, MessageSquare, Lightbulb } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
 import { apis } from "@/utils/apis";
 import { useApi } from "@/hooks/useApi";
@@ -246,6 +246,13 @@ export function Teams() {
   const [isUserScenariosDialogOpen, setIsUserScenariosDialogOpen] = useState(false);
   const [selectedUserScenarios, setSelectedUserScenarios] = useState<any[]>([]);
   const [selectedUserInfo, setSelectedUserInfo] = useState<{ name: string; email: string; userId: string } | null>(null);
+  const [isPendingScenariosOpen, setIsPendingScenariosOpen] = useState(false);
+  const [isLapsedScenariosOpen, setIsLapsedScenariosOpen] = useState(false);
+  const [isCompletedScenariosOpen, setIsCompletedScenariosOpen] = useState(false);
+  const [isPerformanceDialogOpen, setIsPerformanceDialogOpen] = useState(false);
+  const [performanceData, setPerformanceData] = useState<any>(null);
+  const [performanceLoading, setPerformanceLoading] = useState(false);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | number | null>(null);
 
   console.log(teamMembers, data, "teamMembers__")
   // Add state for selected mode
@@ -818,6 +825,117 @@ export function Teams() {
     );
   }
 
+  const capitalizeFirstLetter = (text: string) => {
+    if (!text) return text;
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  };
+
+  const formatSkillName = (skill: string) => {
+    return skill
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const formatCoachingText = (text: string) => {
+    if (!text) return '';
+    
+    // First, normalize the text - replace \n \n with \n\n for consistent paragraph splitting
+    const normalizedText = text.replace(/\n\s+\n/g, '\n\n');
+    
+    // Split by double newlines for major paragraphs
+    const majorSections = normalizedText.split(/\n\n+/).filter(s => s.trim());
+    
+    return majorSections.map((section, sectionIdx) => {
+      const trimmed = section.trim();
+      
+      // Check if section starts with "Specifically:" or similar headers
+      if (trimmed.match(/^[A-Z][^:]*:\s*$/)) {
+        return (
+          <h4 key={sectionIdx} className="font-semibold text-black mt-4 mb-3 text-base">
+            {trimmed}
+          </h4>
+        );
+      }
+      
+      // Process lines within the section
+      const lines = trimmed.split(/\n/).filter(l => l.trim());
+      
+      return (
+        <div key={sectionIdx} className="mb-4">
+          {lines.map((line, lineIdx) => {
+            const lineTrimmed = line.trim();
+            
+            // Check if it's a bullet point with score (format: "- SKILL NAME (score): description")
+            if (lineTrimmed.startsWith('- ')) {
+              const bulletText = lineTrimmed.substring(2).trim();
+              const scoreMatch = bulletText.match(/^([^(]+)\s*\((\d+)\)\s*:\s*(.+)$/);
+              
+              if (scoreMatch) {
+                const [, skillName, score, description] = scoreMatch;
+                return (
+                  <div key={lineIdx} className="mb-4">
+                    <div className="flex items-start gap-2 mb-1">
+                      <span className="text-yellow-600 font-semibold text-lg mt-0.5">•</span>
+                      <div className="flex-1">
+                        <span className="font-semibold text-black text-sm">{skillName.trim()}</span>
+                        <span className="text-black/70 ml-2 font-medium">({score})</span>
+                      </div>
+                    </div>
+                    <p className="ml-6 text-sm text-black/80 leading-relaxed">{description.trim()}</p>
+                  </div>
+                );
+              } else {
+                // Regular bullet point without score
+                return (
+                  <div key={lineIdx} className="mb-2 flex items-start gap-2">
+                    <span className="text-yellow-600 font-semibold mt-1.5">•</span>
+                    <p className="text-sm text-black leading-relaxed flex-1">{bulletText}</p>
+                  </div>
+                );
+              }
+            }
+            
+            // Check if it's a section header (all caps, short)
+            if (lineTrimmed === lineTrimmed.toUpperCase() && lineTrimmed.length < 60 && !lineTrimmed.includes('(')) {
+              return (
+                <h4 key={lineIdx} className="font-semibold text-black mt-4 mb-2 text-sm">
+                  {lineTrimmed}
+                </h4>
+              );
+            }
+            
+            // Regular paragraph line
+            return (
+              <p key={lineIdx} className="text-sm text-black leading-relaxed mb-2">
+                {lineTrimmed}
+              </p>
+            );
+          })}
+        </div>
+      );
+    });
+  };
+
+  const handleViewPerformance = async (sessionId: string | number, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent card click
+    setSelectedSessionId(sessionId);
+    setIsPerformanceDialogOpen(true);
+    setPerformanceLoading(true);
+    setPerformanceData(null);
+    
+    try {
+      const response = await Get(`${apis.performance_report}${sessionId}`);
+      if (response) {
+        setPerformanceData(response);
+      }
+    } catch (err: any) {
+      console.error("Failed to fetch performance report:", err);
+      showToast.error(err?.response?.data?.detail || "Failed to fetch performance report");
+    } finally {
+      setPerformanceLoading(false);
+    }
+  };
+
   const formatText = (text: string | undefined): string => {
     if (!text) return "";
     return text
@@ -917,6 +1035,16 @@ export function Teams() {
   useEffect(() => {
     fetchInteractionModes();
   }, [])
+
+  // Open pending scenarios by default when there are pending scenarios
+  useEffect(() => {
+    if (selectedUserScenarios && selectedUserScenarios.length > 0) {
+      const pendingScenarios = selectedUserScenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) > 0);
+      if (pendingScenarios.length > 0) {
+        setIsPendingScenariosOpen(true);
+      }
+    }
+  }, [selectedUserScenarios])
 
   useEffect(() => {
     let isCancelled = false;
@@ -1839,114 +1967,133 @@ export function Teams() {
                   </div>
 
                   {/* Scenarios List */}
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <h3 className="text-lg font-semibold text-black">
                       All Scenarios ({selectedUserScenarios.length})
                     </h3>
                     
-                    {[...selectedUserScenarios]
-                      .sort((a: any, b: any) => {
-                        // Sort by days_remaining in ascending order (fewer days first)
-                        const daysA = a.days_remaining ?? Infinity;
-                        const daysB = b.days_remaining ?? Infinity;
-                        return daysA - daysB;
-                      })
-                      .map((scenario: any, index: number) => (
-                      <div
-                        key={scenario.scenario_id || index}
-                        className="p-4 rounded-lg border border-border bg-card hover:border-yellow-200 hover:shadow-md transition-all duration-200"
-                      >
-                        <div className="space-y-3">
-                          {/* Scenario Header */}
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Badge 
-                                  variant="outline"
-                                  className={`text-xs ${
-                                    scenario.is_completed
-                                      ? "border-green-300 bg-green-50 text-green-700"
-                                      : "border-orange-300 bg-orange-50 text-orange-700"
-                                  }`}
-                                >
-                                  {scenario.is_completed ? (
-                                    <>
-                                      <CheckCircle className="h-3 w-3 mr-1" />
-                                      Completed
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Clock className="h-3 w-3 mr-1" />
-                                      Pending
-                                    </>
-                                  )}
+                    {(() => {
+                      const pendingScenarios = selectedUserScenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) > 0);
+                      const lapsedScenarios = selectedUserScenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) === 0);
+                      const completedScenarios = selectedUserScenarios.filter((s: any) => s.is_completed);
+                      
+                      return (
+                        <>
+                          {/* Pending Scenarios */}
+                          <div className="space-y-4">
+                            <Button
+                              variant="outline"
+                              onClick={() => setIsPendingScenariosOpen(!isPendingScenariosOpen)}
+                              className="w-full flex items-center justify-between p-4 h-auto border-2 border-border bg-card hover:bg-muted"
+                            >
+                              <div className="flex items-center gap-3">
+                                <Clock className="h-5 w-5 text-black" />
+                                <span className="text-lg font-semibold text-black">Pending</span>
+                                <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300">
+                                  {pendingScenarios.length} {pendingScenarios.length === 1 ? 'scenario' : 'scenarios'}
                                 </Badge>
                               </div>
-                            </div>
+                              <div className="w-6 h-6 rounded bg-[#FFDE5A] flex items-center justify-center shrink-0">
+                                <Plus className={`h-4 w-4 text-black ${isPendingScenariosOpen ? 'hidden' : ''}`} />
+                                <Minus className={`h-4 w-4 text-black ${isPendingScenariosOpen ? '' : 'hidden'}`} />
+                              </div>
+                            </Button>
+
+                            {isPendingScenariosOpen && (
+                              <div className="grid gap-4">
+                                {pendingScenarios.length > 0 ? (
+                                  [...pendingScenarios]
+                                    .sort((a: any, b: any) => {
+                          const daysA = a.days_remaining ?? Infinity;
+                          const daysB = b.days_remaining ?? Infinity;
+                          return daysA - daysB;
+                      })
+                      .map((scenario: any, index: number) => (
+                                      <Card
+                        key={scenario.scenario_id || index}
+                                        className="border-border hover:border-yellow-200 hover:shadow-lg transition-all duration-300 overflow-hidden"
+                                      >
+                                        <CardContent className="p-6">
+                                          <div className="flex items-start justify-between gap-6">
+                                            <div className="flex-1 space-y-4">
+                                              {/* Header Section - Status */}
+                                              <div className="flex items-center gap-3">
+                                <Badge 
+                                  variant="outline"
+                                                  className="text-xs font-medium px-3 py-1.5 border-red-300 bg-red-50 text-red-700"
+                                                >
+                                                  <Clock className="h-3 w-3 mr-1.5" />
+                                      Pending
+                                </Badge>
                           </div>
 
-                          {/* Scenario Details Grid */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Created At */}
-                            <div className="flex items-center gap-2 text-sm">
-                              <Calendar className="h-4 w-4 text-black/60" />
-                              <div>
-                                <p className="text-xs text-black/60">Created At</p>
-                                <p className="font-medium text-black">
-                                  {scenario.created_at 
-                                    ? new Date(scenario.created_at).toLocaleDateString('en-US', { 
-                                        year: 'numeric', 
-                                        month: 'long', 
-                                        day: 'numeric' 
-                                      })
-                                    : "N/A"}
-                                </p>
-                              </div>
-                            </div>
+                                              {/* Information Section */}
+                                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/50">
+                                                <div className="flex items-start gap-3">
+                                                  <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                    <Calendar className="h-4 w-4 text-black/60" />
+                                                  </div>
+                                                  <div>
+                                                    <p className="text-xs font-medium text-black/50 mb-1">Created On</p>
+                                                    <p className="text-sm font-semibold text-black">
+                                                      {scenario.created_at 
+                                                        ? new Date(scenario.created_at).toLocaleDateString('en-US', { 
+                                                            weekday: 'short',
+                                                            month: 'short', 
+                                                            day: 'numeric',
+                                                            year: 'numeric'
+                                                          })
+                                                        : "N/A"}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                                <div className="flex items-start gap-3">
+                                                  <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                    <Target className="h-4 w-4 text-black/60" />
+                                                  </div>
+                                                  <div>
+                                                    <p className="text-xs font-medium text-black/50 mb-1">Deadline</p>
+                                                    <p className="text-sm font-semibold text-black">{scenario.time_limit_days || 0} days</p>
+                                                  </div>
+                                                </div>
+                                                <div className="flex items-start gap-3">
+                                                  <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                    <Target className="h-4 w-4 text-black/60" />
+                                                  </div>
+                                                  <div>
+                                                    <p className="text-xs font-medium text-black/50 mb-1">Mode</p>
+                                                    <p className="text-sm font-semibold text-black">
+                                                      {formatText(scenario.mode?.name || scenario.mode_name || scenario.mode || "N/A")}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                                <div className="flex items-start gap-3">
+                                                  <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                    <UserCircle className="h-4 w-4 text-black/60" />
+                                                  </div>
+                                                  <div>
+                                                    <p className="text-xs font-medium text-black/50 mb-1">Persona</p>
+                                                    <p className="text-sm font-semibold text-black">
+                                                      {scenario.persona?.name || scenario.persona_name || scenario.persona || "N/A"}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                                <div className="flex items-start gap-3">
+                                                  <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                    <Clock className="h-4 w-4 text-black/60" />
+                                                  </div>
+                                                  <div>
+                                                    <p className="text-xs font-medium text-black/50 mb-1">Days Remaining</p>
+                                                    <p className="text-sm font-semibold text-black">
+                                                      {scenario.days_remaining || 0} {scenario.days_remaining === 1 ? 'day' : 'days'}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                              </div>
 
-                            {/* Time Limit */}
-                            <div className="flex items-center gap-2 text-sm">
-                              <Target className="h-4 w-4 text-black/60" />
-                              <div>
-                                <p className="text-xs text-black/60">Deadline</p>
-                                <p className="font-medium text-black">{scenario.time_limit_days || 0} days</p>
-                              </div>
-                            </div>
-
-                            {/* Mode */}
-                            <div className="flex items-center gap-2 text-sm">
-                              <Target className="h-4 w-4 text-black/60" />
-                              <div>
-                                <p className="text-xs text-black/60">Mode</p>
-                                <p className="font-medium text-black">
-                                  {scenario.mode?.name || scenario.mode_name || scenario.mode || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Persona */}
-                            <div className="flex items-center gap-2 text-sm">
-                              <UserCircle className="h-4 w-4 text-black/60" />
-                              <div>
-                                <p className="text-xs text-black/60">Persona</p>
-                                <p className="font-medium text-black">
-                                  {scenario.persona?.name || scenario.persona_name || scenario.persona || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 text-sm">
-                              <Clock className="h-4 w-4 text-black/60" />
-                              <div>
-                                <p className="text-xs text-black/60">Days Remaining</p>
-                                <p className="font-medium text-black">{scenario.days_remaining || 0} days</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Scenario Message (Description) */}
+                                              {/* Scenario Message */}
                           {scenario.scenario && (
-                            <div className="mt-4 p-3 rounded-lg border bg-yellow-50/30 border-yellow-200">
+                                                <div className="pt-3 border-t border-border/50">
                               <div className="flex items-start gap-2">
                                 <FileText className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
                                 <div className="flex-1">
@@ -1959,7 +2106,7 @@ export function Teams() {
 
                           {/* Manager Message */}
                           {scenario.message && (
-                            <div className="mt-2 p-3 rounded-lg border bg-blue-50/30 border-blue-200">
+                                                <div className="pt-2">
                               <div className="flex items-start gap-2">
                                 <Info className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
                                 <div className="flex-1">
@@ -1971,7 +2118,608 @@ export function Teams() {
                           )}
                         </div>
                       </div>
-                    ))}
+                                        </CardContent>
+                                      </Card>
+                                    ))
+                                ) : (
+                                  <Card>
+                                    <CardContent className="p-8">
+                                      <div className="flex flex-col items-center justify-center gap-2 text-center">
+                                        <Clock className="h-8 w-8 text-red-300" />
+                                        <p className="text-sm text-muted-foreground">No pending scenarios</p>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                            {/* Lapsed Scenarios */}
+                            {lapsedScenarios.length > 0 && (
+                              <div className="space-y-4">
+                                <Button
+                                  variant="outline"
+                                  onClick={() => setIsLapsedScenariosOpen(!isLapsedScenariosOpen)}
+                                  className="w-full flex items-center justify-between p-4 h-auto border-2 border-border bg-card hover:bg-muted"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <AlertCircle className="h-5 w-5 text-black" />
+                                    <span className="text-lg font-semibold text-black">Overdue</span>
+                                    <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
+                                      {lapsedScenarios.length} {lapsedScenarios.length === 1 ? 'scenario' : 'scenarios'}
+                                    </Badge>
+                                  </div>
+                                  <div className="w-6 h-6 rounded bg-[#FFDE5A] flex items-center justify-center shrink-0">
+                                    <Plus className={`h-4 w-4 text-black ${isLapsedScenariosOpen ? 'hidden' : ''}`} />
+                                    <Minus className={`h-4 w-4 text-black ${isLapsedScenariosOpen ? '' : 'hidden'}`} />
+                                  </div>
+                                </Button>
+
+                                {isLapsedScenariosOpen && (
+                                  <div className="grid gap-4">
+                                    {[...lapsedScenarios]
+                                      .sort((a: any, b: any) => {
+                                        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                                        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                                        return dateB - dateA;
+                                      })
+                                      .map((scenario: any, index: number) => (
+                                        <Card
+                                          key={scenario.scenario_id || index}
+                                          className="border-border hover:border-yellow-200 hover:shadow-lg transition-all duration-300 overflow-hidden"
+                                        >
+                                          <CardContent className="p-6">
+                                            <div className="flex items-start justify-between gap-6">
+                                              <div className="flex-1 space-y-4">
+                                                <div className="flex items-center gap-3">
+                                                  <Badge 
+                                                    variant="outline"
+                                                    className="text-xs font-medium px-3 py-1.5 border-orange-400 bg-orange-100 text-orange-700"
+                                                  >
+                                                    <AlertCircle className="h-3 w-3 mr-1.5" />
+                                                    Overdue
+                                                  </Badge>
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/50">
+                                                  <div className="flex items-start gap-3">
+                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                      <Calendar className="h-4 w-4 text-black/60" />
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs font-medium text-black/50 mb-1">Created On</p>
+                                                      <p className="text-sm font-semibold text-black">
+                                                        {scenario.created_at 
+                                                          ? new Date(scenario.created_at).toLocaleDateString('en-US', { 
+                                                              weekday: 'short',
+                                                              month: 'short', 
+                                                              day: 'numeric',
+                                                              year: 'numeric'
+                                                            })
+                                                          : "N/A"}
+                                                      </p>
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex items-start gap-3">
+                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                      <Target className="h-4 w-4 text-black/60" />
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs font-medium text-black/50 mb-1">Deadline</p>
+                                                      <p className="text-sm font-semibold text-black">{scenario.time_limit_days || 0} days</p>
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex items-start gap-3">
+                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                      <Target className="h-4 w-4 text-black/60" />
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs font-medium text-black/50 mb-1">Mode</p>
+                                                      <p className="text-sm font-semibold text-black">
+                                                        {formatText(scenario.mode?.name || scenario.mode_name || scenario.mode || "N/A")}
+                                                      </p>
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex items-start gap-3">
+                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                      <UserCircle className="h-4 w-4 text-black/60" />
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs font-medium text-black/50 mb-1">Persona</p>
+                                                      <p className="text-sm font-semibold text-black">
+                                                        {scenario.persona?.name || scenario.persona_name || scenario.persona || "N/A"}
+                                                      </p>
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex items-start gap-3">
+                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                      <AlertCircle className="h-4 w-4 text-black/60" />
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs font-medium text-black/50 mb-1">Days Remaining</p>
+                                                      <p className="text-sm font-semibold text-black">0 days (Time lapsed)</p>
+                                                    </div>
+                                                  </div>
+                                                </div>
+
+                                                {/* Scenario Message */}
+                                                {scenario.scenario && (
+                                                  <div className="pt-3 border-t border-border/50">
+                                                    <div className="flex items-start gap-2">
+                                                      <FileText className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
+                                                      <div className="flex-1">
+                                                        <p className="text-xs font-medium text-black/60 mb-1">Scenario Message</p>
+                                                        <p className="text-sm text-black leading-relaxed">{scenario.scenario}</p>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                )}
+
+                                                {/* Manager Message */}
+                                                {scenario.message && (
+                                                  <div className="pt-2">
+                                                    <div className="flex items-start gap-2">
+                                                      <Info className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
+                                                      <div className="flex-1">
+                                                        <p className="text-xs font-medium text-black/60 mb-1">Message</p>
+                                                        <p className="text-sm text-black leading-relaxed italic">"{scenario.message}"</p>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </CardContent>
+                                        </Card>
+                                      ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Completed Scenarios */}
+                            {completedScenarios.length > 0 && (
+                              <div className="space-y-4">
+                                <Button
+                                  variant="outline"
+                                  onClick={() => setIsCompletedScenariosOpen(!isCompletedScenariosOpen)}
+                                  className="w-full flex items-center justify-between p-4 h-auto border-2 border-border bg-card hover:bg-muted"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <CheckCircle className="h-5 w-5 text-black" />
+                                    <span className="text-lg font-semibold text-black">Completed</span>
+                                    <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">
+                                      {completedScenarios.length} {completedScenarios.length === 1 ? 'scenario' : 'scenarios'}
+                                    </Badge>
+                                  </div>
+                                  <div className="w-6 h-6 rounded bg-[#FFDE5A] flex items-center justify-center shrink-0">
+                                    <Plus className={`h-4 w-4 text-black ${isCompletedScenariosOpen ? 'hidden' : ''}`} />
+                                    <Minus className={`h-4 w-4 text-black ${isCompletedScenariosOpen ? '' : 'hidden'}`} />
+                                  </div>
+                                </Button>
+
+                                {isCompletedScenariosOpen && (
+                                  <div className="grid gap-4">
+                                    {[...completedScenarios]
+                                      .sort((a: any, b: any) => {
+                                        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                                        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                                        return dateB - dateA;
+                                      })
+                                      .map((scenario: any, index: number) => (
+                                        <Card
+                                          key={scenario.scenario_id || index}
+                                          className="border-border hover:border-yellow-200 hover:shadow-lg transition-all duration-300 overflow-hidden"
+                                        >
+                                          <CardContent className="p-6">
+                                            <div className="flex items-start justify-between gap-6">
+                                              <div className="flex-1 space-y-4">
+                                                <div className="flex items-center gap-3">
+                                                  <Badge 
+                                                    variant="outline"
+                                                    className="text-xs font-medium px-3 py-1.5 border-green-300 bg-green-50 text-green-700"
+                                                  >
+                                                    <CheckCircle className="h-3 w-3 mr-1.5" />
+                                                    Completed
+                                                  </Badge>
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/50">
+                                                  <div className="flex items-start gap-3">
+                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                      <Calendar className="h-4 w-4 text-black/60" />
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs font-medium text-black/50 mb-1">Created On</p>
+                                                      <p className="text-sm font-semibold text-black">
+                                                        {scenario.created_at 
+                                                          ? new Date(scenario.created_at).toLocaleDateString('en-US', { 
+                                                              weekday: 'short',
+                                                              month: 'short', 
+                                                              day: 'numeric',
+                                                              year: 'numeric'
+                                                            })
+                                                          : "N/A"}
+                                                      </p>
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex items-start gap-3">
+                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                      <Target className="h-4 w-4 text-black/60" />
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs font-medium text-black/50 mb-1">Deadline</p>
+                                                      <p className="text-sm font-semibold text-black">{scenario.time_limit_days || 0} days</p>
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex items-start gap-3">
+                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                      <Target className="h-4 w-4 text-black/60" />
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs font-medium text-black/50 mb-1">Mode</p>
+                                                      <p className="text-sm font-semibold text-black">
+                                                        {formatText(scenario.mode?.name || scenario.mode_name || scenario.mode || "N/A")}
+                                                      </p>
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex items-start gap-3">
+                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                      <UserCircle className="h-4 w-4 text-black/60" />
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs font-medium text-black/50 mb-1">Persona</p>
+                                                      <p className="text-sm font-semibold text-black">
+                                                        {scenario.persona?.name || scenario.persona_name || scenario.persona || "N/A"}
+                                                      </p>
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex items-start gap-3">
+                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                      <CheckCircle className="h-4 w-4 text-black/60" />
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs font-medium text-black/50 mb-1">Status</p>
+                                                      <p className="text-sm font-semibold text-black">Completed</p>
+                                                    </div>
+                                                  </div>
+                                                </div>
+
+                                                {/* Scenario Message */}
+                                                {scenario.scenario && (
+                                                  <div className="pt-3 border-t border-border/50">
+                                                    <div className="flex items-start gap-2">
+                                                      <FileText className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
+                                                      <div className="flex-1">
+                                                        <p className="text-xs font-medium text-black/60 mb-1">Scenario Message</p>
+                                                        <p className="text-sm text-black leading-relaxed">{scenario.scenario}</p>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                )}
+
+                                                {/* Manager Message */}
+                                                {scenario.message && (
+                                                  <div className="pt-2">
+                                                    <div className="flex items-start gap-2">
+                                                      <Info className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
+                                                      <div className="flex-1">
+                                                        <p className="text-xs font-medium text-black/60 mb-1">Message</p>
+                                                        <p className="text-sm text-black leading-relaxed italic">"{scenario.message}"</p>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                )}
+
+                                                {/* Performance Button */}
+                                                {scenario.session_id && (
+                                                  <div className="pt-3 border-t border-border/50">
+                                                    <Button
+                                                      variant="outline"
+                                                      onClick={(e) => handleViewPerformance(scenario.session_id, e)}
+                                                      className="w-full bg-yellow-50 hover:bg-yellow-100 border-border text-black"
+                                                    >
+                                                      <BarChart3 className="h-4 w-4 mr-2" />
+                                                      Performance
+                                                    </Button>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </CardContent>
+                                        </Card>
+                                      ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {/* Performance Report Dialog */}
+          <Dialog open={isPerformanceDialogOpen} onOpenChange={setIsPerformanceDialogOpen}>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader className="pb-4 border-b">
+                <DialogTitle className="flex items-center gap-3 text-xl">
+                  <div className="p-2 rounded-lg bg-yellow-100 border border-border">
+                    <BarChart3 className="h-5 w-5 text-black" />
+                  </div>
+                  <span>Performance Report</span>
+                </DialogTitle>
+              </DialogHeader>
+              
+              {performanceLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500"></div>
+                    <p className="text-muted-foreground text-sm">Loading performance report...</p>
+                  </div>
+                </div>
+              ) : performanceData ? (
+                <div className="space-y-6 pt-4">
+                  {/* Overall Score */}
+                  {typeof performanceData.overall_score === 'number' && (
+                    <Card className="border-border">
+                      <CardContent className="p-6">
+                        <div className="flex items-center gap-2 mb-2">
+                          <BarChart3 className="w-5 h-5 text-black" />
+                          <span className="text-sm font-medium text-black">Overall Score</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-4xl font-bold text-black">{performanceData.overall_score.toFixed(1)}</div>
+                          <div className="flex-1">
+                            <Progress value={performanceData.overall_score} className="h-3" />
+                          </div>
+                          <div className="text-sm text-black/60">/100</div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Skills Breakdown */}
+                  {performanceData.skills && Object.keys(performanceData.skills).length > 0 && (
+                    <Card className="border-border">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base font-semibold">Skills Breakdown</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {Object.entries(performanceData.skills).map(([skill, score]: [string, any]) => (
+                          <div key={skill} className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="font-medium text-black">{formatSkillName(skill)}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-black font-semibold">
+                                  {typeof score === 'number' ? score.toFixed(1) : 'N/A'}/100
+                                </span>
+                              </div>
+                            </div>
+                            <Progress
+                              value={typeof score === 'number' ? score : 0}
+                              className="h-2"
+                            />
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Additional Performance Metrics */}
+                  {performanceData.mode_name && (
+                    <Card className="border-border">
+                      <CardContent className="p-5">
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 rounded-lg bg-yellow-100 border border-border">
+                            <Target className="h-5 w-5 text-black" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-black/50 mb-1">Mode</p>
+                            <p className="text-base font-semibold text-black">{formatText(performanceData.mode_name)}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Display all other fields from performance data */}
+                  {Object.entries(performanceData).map(([key, value]: [string, any]) => {
+                    // Skip already displayed fields and coaching fields (handled separately)
+                    if (['overall_score', 'skills', 'mode_name', 'coaching_summary', 'coaching_notes', 'feedback', 'recommendations', 'areas_for_improvement', 'strengths', 'weaknesses'].includes(key)) return null;
+                    
+                    // Skip null/undefined values
+                    if (value === null || value === undefined) return null;
+                    
+                    // Skip objects and arrays (they're complex structures)
+                    if (typeof value === 'object' && !Array.isArray(value)) return null;
+                    
+                    return (
+                      <Card key={key} className="border-border">
+                        <CardContent className="p-5">
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                              <Info className="h-4 w-4 text-black/60" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-black/50 mb-1">{formatSkillName(key)}</p>
+                              <p className="text-sm font-semibold text-black">
+                                {typeof value === 'number' ? value.toFixed(2) : String(value)}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+
+                  {/* Coaching Summary Section */}
+                  {(performanceData.coaching_summary || 
+                    performanceData.coaching_notes || 
+                    performanceData.feedback || 
+                    performanceData.recommendations ||
+                    performanceData.areas_for_improvement ||
+                    performanceData.strengths ||
+                    performanceData.weaknesses) && (
+                    <Card className="border-border bg-yellow-50/20">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base font-semibold flex items-center gap-2">
+                          <MessageSquare className="h-5 w-5 text-black" />
+                          Coaching Summary
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {/* Coaching Summary */}
+                        {performanceData.coaching_summary && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-black/70">Summary</p>
+                            <div className="bg-white p-6 rounded-lg border border-border/50">
+                              {typeof performanceData.coaching_summary === 'string' 
+                                ? formatCoachingText(performanceData.coaching_summary)
+                                : <p className="text-sm text-black leading-relaxed">{JSON.stringify(performanceData.coaching_summary)}</p>}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Coaching Notes */}
+                        {performanceData.coaching_notes && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-black/70">Coaching Notes</p>
+                            <div className="bg-white p-6 rounded-lg border border-border/50">
+                              {typeof performanceData.coaching_notes === 'string' 
+                                ? formatCoachingText(performanceData.coaching_notes)
+                                : <p className="text-sm text-black leading-relaxed">{JSON.stringify(performanceData.coaching_notes)}</p>}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Feedback */}
+                        {performanceData.feedback && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-black/70">Feedback</p>
+                            <div className="bg-white p-6 rounded-lg border border-border/50">
+                              {typeof performanceData.feedback === 'string' 
+                                ? formatCoachingText(performanceData.feedback)
+                                : <p className="text-sm text-black leading-relaxed">{JSON.stringify(performanceData.feedback)}</p>}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Strengths */}
+                        {performanceData.strengths && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-black/70 flex items-center gap-2">
+                              <TrendingUp className="h-4 w-4 text-green-600" />
+                              Strengths
+                            </p>
+                            <div className="bg-white p-4 rounded-lg border border-border/50">
+                              {Array.isArray(performanceData.strengths) ? (
+                                <ul className="list-disc list-inside space-y-1 text-sm text-black">
+                                  {performanceData.strengths.map((strength: string, idx: number) => (
+                                    <li key={idx} className="leading-relaxed">{strength}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-black leading-relaxed">
+                                  {typeof performanceData.strengths === 'string' 
+                                    ? performanceData.strengths 
+                                    : JSON.stringify(performanceData.strengths)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Areas for Improvement */}
+                        {performanceData.areas_for_improvement && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-black/70 flex items-center gap-2">
+                              <Lightbulb className="h-4 w-4 text-yellow-600" />
+                              Areas for Improvement
+                            </p>
+                            <div className="bg-white p-4 rounded-lg border border-border/50">
+                              {Array.isArray(performanceData.areas_for_improvement) ? (
+                                <ul className="list-disc list-inside space-y-1 text-sm text-black">
+                                  {performanceData.areas_for_improvement.map((area: string, idx: number) => (
+                                    <li key={idx} className="leading-relaxed">{area}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-black leading-relaxed">
+                                  {typeof performanceData.areas_for_improvement === 'string' 
+                                    ? performanceData.areas_for_improvement 
+                                    : JSON.stringify(performanceData.areas_for_improvement)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Weaknesses */}
+                        {performanceData.weaknesses && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-black/70 flex items-center gap-2">
+                              <AlertCircle className="h-4 w-4 text-orange-600" />
+                              Areas to Focus On
+                            </p>
+                            <div className="bg-white p-4 rounded-lg border border-border/50">
+                              {Array.isArray(performanceData.weaknesses) ? (
+                                <ul className="list-disc list-inside space-y-1 text-sm text-black">
+                                  {performanceData.weaknesses.map((weakness: string, idx: number) => (
+                                    <li key={idx} className="leading-relaxed">{weakness}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-black leading-relaxed">
+                                  {typeof performanceData.weaknesses === 'string' 
+                                    ? performanceData.weaknesses 
+                                    : JSON.stringify(performanceData.weaknesses)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Recommendations */}
+                        {performanceData.recommendations && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-black/70 flex items-center gap-2">
+                              <Target className="h-4 w-4 text-blue-600" />
+                              Recommendations
+                            </p>
+                            <div className="bg-white p-4 rounded-lg border border-border/50">
+                              {Array.isArray(performanceData.recommendations) ? (
+                                <ul className="list-disc list-inside space-y-1 text-sm text-black">
+                                  {performanceData.recommendations.map((rec: string, idx: number) => (
+                                    <li key={idx} className="leading-relaxed">{rec}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-black leading-relaxed">
+                                  {typeof performanceData.recommendations === 'string' 
+                                    ? performanceData.recommendations 
+                                    : JSON.stringify(performanceData.recommendations)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+                  <div className="p-4 rounded-full bg-yellow-50 border border-border">
+                    <BarChart3 className="h-8 w-8 text-black/40" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-black mb-1">No performance data available</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Performance report data is not available for this session.
+                    </p>
                   </div>
                 </div>
               )}
