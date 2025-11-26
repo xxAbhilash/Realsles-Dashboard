@@ -1084,6 +1084,9 @@ export function AssignedScenarios() {
                         <CheckCircle className="h-5 w-5 mr-2" />
                         Session Completed
                       </Button>
+                    ) : (selectedScenario.days_remaining ?? 0) === 0 ? (
+                      // Overdue scenario - no button shown
+                      null
                     ) : hasSessionStarted(selectedScenario.session_id) ? (
                       <Button
                         className="h-12 px-8 text-base font-semibold"
