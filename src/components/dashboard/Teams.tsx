@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Users, Plus, Minus, ChevronDown, Building2, TrendingUp, Calendar, User, BarChart3, Search, X, ArrowLeft, Check, Edit, Trash2, Info, Briefcase, MapPin, Factory, Building, Package, Sparkles, Target, CheckCircle, Clock, Percent, AlertCircle, UserCircle, FileText, MessageSquare, Lightbulb } from "lucide-react";
+import { Users, Plus, Minus, ChevronDown, Building2, TrendingUp, Calendar, User, BarChart3, Search, X, ArrowLeft, Check, Edit, Trash2, Info, Briefcase, MapPin, Factory, Building, Package, Sparkles, Target, CheckCircle, Clock, Percent, AlertCircle, UserCircle, FileText, MessageSquare, Lightbulb, Upload, Loader2 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
 import { apis } from "@/utils/apis";
 import { useApi } from "@/hooks/useApi";
@@ -238,6 +238,9 @@ export function Teams() {
   const [personasData, setPersonasData] = useState<any[]>([]);
   const [isAssigningScenario, setIsAssigningScenario] = useState(false);
   const [isPersonaDetailsOpen, setIsPersonaDetailsOpen] = useState(false);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  const [documentSummary, setDocumentSummary] = useState<string>("");
   const [selectedPersonaDetails, setSelectedPersonaDetails] = useState<any>(null);
   const [loadingPersonaDetails, setLoadingPersonaDetails] = useState(false);
   const [scenarioDashboardData, setScenarioDashboardData] = useState<any>(null);
@@ -713,6 +716,45 @@ export function Teams() {
     setScenarioStep(2);
   }
 
+  const handleDocumentUpload = async (file: File) => {
+    setIsUploadingDocument(true);
+    setDocumentFile(file);
+    setDocumentSummary("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await Post(apis.documents_upload, formData);
+      
+      if (response?.success && response?.summary) {
+        setDocumentSummary(response.summary);
+        showToast.success("Document uploaded and processed successfully");
+      } else {
+        throw new Error(response?.error || "Failed to process document");
+      }
+    } catch (error: any) {
+      console.error("Error uploading document:", error);
+      setDocumentFile(null);
+      setDocumentSummary("");
+      showToast.error(error?.response?.data?.detail || "Failed to upload document");
+    } finally {
+      setIsUploadingDocument(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleDocumentUpload(file);
+    }
+  };
+
+  const handleRemoveDocument = () => {
+    setDocumentFile(null);
+    setDocumentSummary("");
+  };
+
   const handleAssignScenario = async () => {
     if (!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1) {
       showToast.error("Please fill in all required fields including deadline");
@@ -752,12 +794,17 @@ export function Teams() {
           }
 
           // Step 1: Create session
-          const sessionPayload = {
+          const sessionPayload: any = {
             user_id: userId.toString(),
             persona_id: scenarioData.persona,
             mode_id: scenarioData.mode,
             scenario: scenarioData.description.trim()
           };
+
+          // Add document_content if document summary exists
+          if (documentSummary && documentSummary.trim()) {
+            sessionPayload.document_content = documentSummary.trim();
+          }
 
           const sessionResponse = await Post(apis.sessions_manager_create, sessionPayload);
           
@@ -806,8 +853,11 @@ export function Teams() {
         setScenarioData({ mode: "", persona: "", description: "", timeLimit: 7, message: "" });
         setScenarioStep(1);
         setSelectedAdditionalMembers([]);
-      setIsAssignScenarioDialogOpen(false);
-      setSelectedMemberForScenario(null);
+        setDocumentFile(null);
+        setDocumentSummary("");
+        setIsUploadingDocument(false);
+        setIsAssignScenarioDialogOpen(false);
+        setSelectedMemberForScenario(null);
       }
     } catch (error) {
       console.error("Error assigning scenario:", error);
@@ -2768,11 +2818,14 @@ export function Teams() {
               setScenarioData({ mode: "", persona: "", description: "", timeLimit: 7, message: "" });
               setScenarioStep(1);
               setSelectedAdditionalMembers([]);
+              setDocumentFile(null);
+              setDocumentSummary("");
+              setIsUploadingDocument(false);
             }
           }}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader className="pb-4">
-                <DialogTitle className="text-2xl font-bold">AI prompt to Customize the Scenario</DialogTitle>
+                <DialogTitle className="text-2xl font-bold">Assign Scenario</DialogTitle>
               </DialogHeader>
               
               {scenarioStep === 1 ? (
@@ -2887,6 +2940,94 @@ export function Teams() {
                         </p>
                       ) : (
                         <p className="text-sm text-destructive">Deadline is required (minimum 1 day)</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Document Upload Section */}
+                  <div className="space-y-3">
+                    <Label htmlFor="document-upload" className="text-base font-semibold">
+                      Upload Document (Optional)
+                    </Label>
+                    <div className="border-2 border-dashed rounded-lg p-6">
+                      {!documentFile ? (
+                        <div className="flex flex-col items-center justify-center space-y-4">
+                          <div className="flex items-center justify-center w-16 h-16 rounded-full bg-muted">
+                            <Upload className="h-8 w-8 text-muted-foreground" />
+                          </div>
+                          <div className="text-center">
+                            <p className="text-sm font-medium mb-1">Click to upload or drag and drop</p>
+                            <p className="text-xs text-muted-foreground">PDF, DOC, DOCX (Max 10MB)</p>
+                          </div>
+                          <label htmlFor="document-upload">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="cursor-pointer"
+                              disabled={isUploadingDocument}
+                              asChild
+                            >
+                              <span>
+                                {isUploadingDocument ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Uploading...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Upload className="mr-2 h-4 w-4" />
+                                    Select File
+                                  </>
+                                )}
+                              </span>
+                            </Button>
+                          </label>
+                          <input
+                            id="document-upload"
+                            type="file"
+                            accept=".pdf,.doc,.docx"
+                            onChange={handleFileChange}
+                            className="hidden"
+                            disabled={isUploadingDocument}
+                          />
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                            <div className="flex items-center space-x-3 flex-1">
+                              <FileText className="h-5 w-5 text-muted-foreground" />
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-medium">{documentFile.name}</p>
+                                  {documentSummary && !isUploadingDocument && (
+                                    <Badge variant="default" className="bg-green-500 hover:bg-green-600 text-white text-xs">
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      Processed
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {(documentFile.size / 1024).toFixed(2)} KB
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleRemoveDocument}
+                              disabled={isUploadingDocument}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          {isUploadingDocument && (
+                            <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <span>Processing document...</span>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
