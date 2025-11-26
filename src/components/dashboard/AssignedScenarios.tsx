@@ -493,15 +493,15 @@ export function AssignedScenarios() {
                     </Badge>
                   </div>
 
-                  {/* Scenario Text */}
-                  {selectedScenario.scenario && (
+                  {/* Message */}
+                  {selectedScenario.message && (
                     <Card className="border-border bg-yellow-50/30">
                       <CardContent className="p-5">
                         <div className="flex items-start gap-3">
                           <FileText className="h-5 w-5 text-black/60 mt-0.5 flex-shrink-0" />
                           <div className="flex-1">
-                            <p className="text-sm font-semibold text-black/70 mb-2">Scenario Description</p>
-                            <p className="text-base text-black leading-relaxed">{selectedScenario.scenario}</p>
+                            <p className="text-sm font-semibold text-black/70 mb-2">Message</p>
+                            <p className="text-base text-black leading-relaxed">{selectedScenario.message}</p>
                           </div>
                         </div>
                       </CardContent>
