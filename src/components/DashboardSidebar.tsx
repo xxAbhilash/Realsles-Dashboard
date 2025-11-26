@@ -22,6 +22,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useEffect, useState } from "react";
 import { useApi } from "@/hooks/useApi";
 import { useDispatch } from "react-redux";
@@ -90,6 +91,7 @@ export function DashboardSidebar({ userRole, onRoleChange }: DashboardSidebarPro
   const [user, setUser] = useState<UserData>(getInitialUser());
   const [openProfile, setOpenProfile]: any = useState<Boolean>(false)
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [pendingScenariosCount, setPendingScenariosCount] = useState<number>(0);
 
   // Calculate items based on user role and subscription
   const items = userRole === "sales-rep" ? salesRepItems : getSalesManagerItems(user || {} as UserData);
@@ -114,6 +116,31 @@ export function DashboardSidebar({ userRole, onRoleChange }: DashboardSidebarPro
     };
     getMe();
   }, [])
+
+  // Fetch pending scenarios count for sales reps
+  useEffect(() => {
+    const fetchPendingScenariosCount = async () => {
+      if (userRole === "sales-rep" && user?.user_id) {
+        try {
+          const response = await Get(apis.scenarios_dashboard_sales_rep);
+          if (response?.total_pending !== undefined) {
+            setPendingScenariosCount(response.total_pending || 0);
+          }
+        } catch (error) {
+          console.error("Failed to fetch pending scenarios count:", error);
+          setPendingScenariosCount(0);
+        }
+      } else {
+        setPendingScenariosCount(0);
+      }
+    };
+
+    fetchPendingScenariosCount();
+    
+    // Refresh count every 30 seconds
+    const interval = setInterval(fetchPendingScenariosCount, 30000);
+    return () => clearInterval(interval);
+  }, [userRole, user?.user_id]);
 
   console.log(user, "user")
 
@@ -168,8 +195,15 @@ export function DashboardSidebar({ userRole, onRoleChange }: DashboardSidebarPro
                   {item.title === "Company" ? <hr className="mt-2 mb-3 border-b-[1px]" /> : null}
                   <SidebarMenuButton asChild>
                     <NavLink to={item.url} className={getNavCls}>
-                      <item.icon className="mr-3 h-4 w-4 text-black" />
-                      {!collapsed && <span>{item.title}</span>}
+                      <item.icon className="mr-3 h-4 w-4 text-black flex-shrink-0" />
+                      {!collapsed && (
+                        <span className="flex-1">{item.title}</span>
+                      )}
+                      {item.title === "Assigned Scenarios" && userRole === "sales-rep" && pendingScenariosCount > 0 && (
+                        <Badge variant="destructive" className="h-[16.5px] min-w-[16.5px] px-1 text-[9px] font-bold flex-shrink-0 ml-auto text-white animate-blink-badge">
+                          {pendingScenariosCount > 99 ? '99+' : pendingScenariosCount}
+                        </Badge>
+                      )}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -188,7 +222,7 @@ export function DashboardSidebar({ userRole, onRoleChange }: DashboardSidebarPro
                   <p className="text-lg font-medium">Upgrade</p>
                   <p className="text-base leading-[100%]">Get Access upto 3 Personas</p>
                 </div>
-                <NavLink to={"https://www.real-sales.com/pricing"} className="w-full border-b-[2px] border-dolid flex items-center justify-center gap-2 rounded hover:bg-[#FFDE5A] !border-[#FFDE5A] !bg-[#060606] !text-[#FFDE5A] !text-base !px-5 !py-2 h-fit" >upgrade your plan<svg width="19" height="15" fill="none" stroke="#FFDE5A">
+                <NavLink to={"https://mainreal-sales.vercel.app/pricing"} className="w-full border-b-[2px] border-dolid flex items-center justify-center gap-2 rounded hover:bg-[#FFDE5A] !border-[#FFDE5A] !bg-[#060606] !text-[#FFDE5A] !text-base !px-5 !py-2 h-fit" >upgrade your plan<svg width="19" height="15" fill="none" stroke="#FFDE5A">
                   <path stroke="#FFDE5A" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m17.833 7.5-6.25-6.25m6.25 6.25-6.25 6.25m6.25-6.25H6.896m-5.73 0h2.605"></path>
                 </svg>
                 </NavLink>
