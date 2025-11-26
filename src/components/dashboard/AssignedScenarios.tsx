@@ -345,7 +345,14 @@ export function AssignedScenarios() {
               </div>
 
               <div className="grid gap-4">
-                {scenarioData.pending_scenarios.map((scenario: any, index: number) => (
+                {[...scenarioData.pending_scenarios]
+                  .sort((a: any, b: any) => {
+                    // Sort by days_remaining in ascending order (fewer days first)
+                    const daysA = a.days_remaining ?? Infinity;
+                    const daysB = b.days_remaining ?? Infinity;
+                    return daysA - daysB;
+                  })
+                  .map((scenario: any, index: number) => (
                   <Card
                     key={scenario.scenario_id || index}
                     onClick={() => handleScenarioClick(scenario)}

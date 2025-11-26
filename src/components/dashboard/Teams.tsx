@@ -1844,7 +1844,14 @@ export function Teams() {
                       All Scenarios ({selectedUserScenarios.length})
                     </h3>
                     
-                    {selectedUserScenarios.map((scenario: any, index: number) => (
+                    {[...selectedUserScenarios]
+                      .sort((a: any, b: any) => {
+                        // Sort by days_remaining in ascending order (fewer days first)
+                        const daysA = a.days_remaining ?? Infinity;
+                        const daysB = b.days_remaining ?? Infinity;
+                        return daysA - daysB;
+                      })
+                      .map((scenario: any, index: number) => (
                       <div
                         key={scenario.scenario_id || index}
                         className="p-4 rounded-lg border border-border bg-card hover:border-yellow-200 hover:shadow-md transition-all duration-200"
@@ -2017,7 +2024,7 @@ export function Teams() {
           }}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader className="pb-4">
-                <DialogTitle className="text-2xl font-bold">Assign Scenario</DialogTitle>
+                <DialogTitle className="text-2xl font-bold">AI prompt to Customize the Scenario</DialogTitle>
               </DialogHeader>
               
               {scenarioStep === 1 ? (
@@ -2138,7 +2145,7 @@ export function Teams() {
 
                   <div className="space-y-3">
                     <Label htmlFor="scenario-description" className="text-base font-semibold">
-                      AI prompt to Customize the Scenario <span className="text-destructive">*</span>
+                      Scenario <span className="text-destructive">*</span>
                     </Label>
                     <Textarea
                       id="scenario-description"
