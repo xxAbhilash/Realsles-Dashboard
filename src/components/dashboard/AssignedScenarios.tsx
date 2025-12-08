@@ -1213,7 +1213,8 @@ export function AssignedScenarios() {
                   {/* Display all other fields from performance data */}
                   {Object.entries(performanceData).map(([key, value]: [string, any]) => {
                     // Skip already displayed fields and coaching fields (handled separately)
-                    if (['overall_score', 'skills', 'mode_name', 'coaching_summary', 'coaching_notes', 'feedback', 'recommendations', 'areas_for_improvement', 'strengths', 'weaknesses'].includes(key)) return null;
+                    // Also skip evaluation fields (handled separately for managers only)
+                    if (['overall_score', 'skills', 'mode_name', 'coaching_summary', 'coaching_notes', 'feedback', 'recommendations', 'areas_for_improvement', 'strengths', 'weaknesses', 'scenario_evaluation', 'evaluation', 'scenario_evaluation_summary', 'evaluation_summary'].includes(key)) return null;
                     
                     // Skip null/undefined values
                     if (value === null || value === undefined) return null;
@@ -1239,6 +1240,47 @@ export function AssignedScenarios() {
                       </Card>
                     );
                   })}
+
+                  {/* Scenario Evaluation Section - Only visible to managers */}
+                  {((user as any)?.role?.name !== "sales_person" && 
+                    (performanceData.scenario_evaluation || 
+                     performanceData.evaluation || 
+                     performanceData.scenario_evaluation_summary || 
+                     performanceData.evaluation_summary)) && (
+                    <Card className="border-border bg-blue-50/20">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base font-semibold flex items-center gap-2">
+                          <FileText className="h-5 w-5 text-black" />
+                          Scenario Evaluation
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {/* Scenario Evaluation */}
+                        {(performanceData.scenario_evaluation || performanceData.evaluation) && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-black/70">Evaluation</p>
+                            <div className="bg-white p-6 rounded-lg border border-border/50">
+                              {typeof (performanceData.scenario_evaluation || performanceData.evaluation) === 'string' 
+                                ? formatCoachingText(performanceData.scenario_evaluation || performanceData.evaluation)
+                                : <p className="text-sm text-black leading-relaxed">{JSON.stringify(performanceData.scenario_evaluation || performanceData.evaluation)}</p>}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Scenario Evaluation Summary */}
+                        {(performanceData.scenario_evaluation_summary || performanceData.evaluation_summary) && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-black/70">Evaluation Summary</p>
+                            <div className="bg-white p-6 rounded-lg border border-border/50">
+                              {typeof (performanceData.scenario_evaluation_summary || performanceData.evaluation_summary) === 'string' 
+                                ? formatCoachingText(performanceData.scenario_evaluation_summary || performanceData.evaluation_summary)
+                                : <p className="text-sm text-black leading-relaxed">{JSON.stringify(performanceData.scenario_evaluation_summary || performanceData.evaluation_summary)}</p>}
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
 
                   {/* Coaching Summary Section */}
                   {(performanceData.coaching_summary || 
