@@ -45,8 +45,7 @@ export function AssignedScenarios() {
   const [isScenarioDialogOpen, setIsScenarioDialogOpen] = useState(false);
   const [selectedScenario, setSelectedScenario] = useState<any>(null);
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
-  const [isPendingScenariosOpen, setIsPendingScenariosOpen] = useState(false);
-  const [isLapsedScenariosOpen, setIsLapsedScenariosOpen] = useState(false);
+  const [isPendingOverdueScenariosOpen, setIsPendingOverdueScenariosOpen] = useState(false);
   const [isCompletedScenariosOpen, setIsCompletedScenariosOpen] = useState(false);
   const [isPerformanceDialogOpen, setIsPerformanceDialogOpen] = useState(false);
   const [performanceData, setPerformanceData] = useState<any>(null);
@@ -77,12 +76,13 @@ export function AssignedScenarios() {
     fetchScenarios();
   }, []);
 
-  // Open pending scenarios by default when there are pending scenarios
+  // Open pending/overdue scenarios by default when there are pending or overdue scenarios
   useEffect(() => {
     if (scenarioData?.pending_scenarios) {
       const pendingScenarios = scenarioData.pending_scenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) > 0);
-      if (pendingScenarios.length > 0) {
-        setIsPendingScenariosOpen(true);
+      const lapsedScenarios = scenarioData.pending_scenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) === 0);
+      if (pendingScenarios.length > 0 || lapsedScenarios.length > 0) {
+        setIsPendingOverdueScenariosOpen(true);
       }
     }
   }, [scenarioData]);
@@ -449,7 +449,7 @@ export function AssignedScenarios() {
                     <Clock className="h-6 w-6 text-black" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-black/60 mb-1">Total Pending Scenarios</p>
+                    <p className="text-sm font-medium text-black/60 mb-1">Total Pending/Overdue Scenarios</p>
                     <p className="text-4xl font-bold text-black">{scenarioData?.total_pending || 0}</p>
                   </div>
                 </div>
@@ -468,242 +468,166 @@ export function AssignedScenarios() {
           {/* Scenarios List */}
           {scenarioData?.pending_scenarios && scenarioData.pending_scenarios.length > 0 ? (
             <div className="space-y-4">
-              {/* Separate pending, lapsed, and completed scenarios */}
+              {/* Separate pending/overdue and completed scenarios */}
               {(() => {
                 const pendingScenarios = scenarioData.pending_scenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) > 0);
                 const lapsedScenarios = scenarioData.pending_scenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) === 0);
                 const completedScenarios = scenarioData.pending_scenarios.filter((s: any) => s.is_completed);
+                const pendingOverdueScenarios = [...pendingScenarios, ...lapsedScenarios];
                 
                 return (
                   <>
-                    {/* Pending Scenarios */}
-                    <div className="space-y-4">
-                      <Button
-                        variant="outline"
-                        onClick={() => setIsPendingScenariosOpen(!isPendingScenariosOpen)}
-                        className="w-full flex items-center justify-between p-4 h-auto border-2 border-border bg-card hover:bg-muted"
-                      >
-                        <div className="flex items-center gap-3">
-                          <Clock className="h-5 w-5 text-black" />
-                          <span className="text-lg font-semibold text-black">Pending</span>
-                          <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300">
-                            {pendingScenarios.length} {pendingScenarios.length === 1 ? 'scenario' : 'scenarios'}
-                          </Badge>
-                        </div>
-                        <div className="w-6 h-6 rounded bg-[#FFDE5A] flex items-center justify-center shrink-0">
-                          <Plus className={`h-4 w-4 text-black ${isPendingScenariosOpen ? 'hidden' : ''}`} />
-                          <Minus className={`h-4 w-4 text-black ${isPendingScenariosOpen ? '' : 'hidden'}`} />
-                        </div>
-                      </Button>
-
-                      {isPendingScenariosOpen && (
-              <div className="grid gap-4">
-                          {pendingScenarios.length > 0 ? (
-                            [...pendingScenarios]
-                              .sort((a: any, b: any) => {
-                                // Sort by days_remaining in ascending order (fewer days first)
-                                const daysA = a.days_remaining ?? Infinity;
-                                const daysB = b.days_remaining ?? Infinity;
-                                return daysA - daysB;
-                              })
-                              .map((scenario: any, index: number) => (
-                                <Card
-                                  key={scenario.scenario_id || index}
-                                  onClick={() => handleScenarioClick(scenario)}
-                                  className="group cursor-pointer border-border hover:border-yellow-200 hover:shadow-lg transition-all duration-300 overflow-hidden"
-                                >
-                                  <CardContent className="p-6">
-                                    <div className="flex items-start justify-between gap-6">
-                                      <div className="flex-1 space-y-4">
-                                        {/* Header Section - Status */}
-                                        <div className="flex items-center gap-3">
-                                          <Badge 
-                                            variant="outline"
-                                            className="text-xs font-medium px-3 py-1.5 border-red-300 bg-red-50 text-red-700"
-                                          >
-                                            <Clock className="h-3 w-3 mr-1.5" />
-                                            Pending
-                                          </Badge>
-                                        </div>
-
-                                        {/* Manager Assignment Message */}
-                                        <div>
-                                          <p className="text-sm font-medium text-black leading-relaxed">
-                                            You have been assigned a scenario by <span className="font-semibold">{capitalizeFirstLetter(scenario.manager_name) || "Manager"}</span>
-                                            {scenario.message ? (
-                                              <span className="block mt-2 text-sm text-black/70 font-normal">
-                                                with this message: <span className="italic">"{scenario.message}"</span>
-                                              </span>
-                                            ) : null}
-                                          </p>
-                                        </div>
-
-                                        {/* Information Section */}
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/50">
-                                          <div className="flex items-start gap-3">
-                                            <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                              <Calendar className="h-4 w-4 text-black/60" />
-                                            </div>
-                                            <div>
-                                              <p className="text-xs font-medium text-black/50 mb-1">Created On</p>
-                                              <p className="text-sm font-semibold text-black">
-                                                {scenario.created_at 
-                                                  ? new Date(scenario.created_at).toLocaleDateString('en-US', { 
-                                                      weekday: 'short',
-                                                      month: 'short', 
-                                                      day: 'numeric',
-                                                      year: 'numeric'
-                                                    })
-                                                  : "N/A"}
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="flex items-start gap-3">
-                                            <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                              <Clock className="h-4 w-4 text-black/60" />
-                                            </div>
-                                            <div>
-                                              <p className="text-xs font-medium text-black/50 mb-1">Days Remaining</p>
-                                              <p className="text-sm font-semibold text-black">
-                                                {scenario.days_remaining || 0} {scenario.days_remaining === 1 ? 'day' : 'days'}
-                                              </p>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                      <ChevronRight className="h-5 w-5 text-black/30 group-hover:text-black/60 group-hover:translate-x-1 transition-all flex-shrink-0 mt-1" />
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              ))
-                          ) : (
-                            <Card>
-                              <CardContent className="p-8">
-                                <div className="flex flex-col items-center justify-center gap-2 text-center">
-                                  <Clock className="h-8 w-8 text-red-300" />
-                                  <p className="text-sm text-muted-foreground">No pending scenarios</p>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Lapsed Scenarios */}
-                    {lapsedScenarios.length > 0 && (
+                    {/* Pending/Overdue Scenarios */}
+                    {(pendingScenarios.length > 0 || lapsedScenarios.length > 0) && (
                       <div className="space-y-4">
                         <Button
                           variant="outline"
-                          onClick={() => setIsLapsedScenariosOpen(!isLapsedScenariosOpen)}
+                          onClick={() => setIsPendingOverdueScenariosOpen(!isPendingOverdueScenariosOpen)}
                           className="w-full flex items-center justify-between p-4 h-auto border-2 border-border bg-card hover:bg-muted"
                         >
                           <div className="flex items-center gap-3">
-                            <AlertCircle className="h-5 w-5 text-black" />
-                            <span className="text-lg font-semibold text-black">Overdue</span>
-                            <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
-                              {lapsedScenarios.length} {lapsedScenarios.length === 1 ? 'scenario' : 'scenarios'}
+                            <Clock className="h-5 w-5 text-black" />
+                            <span className="text-lg font-semibold text-black">Pending/Overdue</span>
+                            <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300">
+                              {pendingScenarios.length} {pendingScenarios.length === 1 ? 'pending' : 'pending'}
                             </Badge>
+                            {lapsedScenarios.length > 0 && (
+                              <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
+                                {lapsedScenarios.length} {lapsedScenarios.length === 1 ? 'overdue' : 'overdue'}
+                              </Badge>
+                            )}
                           </div>
                           <div className="w-6 h-6 rounded bg-[#FFDE5A] flex items-center justify-center shrink-0">
-                            <Plus className={`h-4 w-4 text-black ${isLapsedScenariosOpen ? 'hidden' : ''}`} />
-                            <Minus className={`h-4 w-4 text-black ${isLapsedScenariosOpen ? '' : 'hidden'}`} />
+                            <Plus className={`h-4 w-4 text-black ${isPendingOverdueScenariosOpen ? 'hidden' : ''}`} />
+                            <Minus className={`h-4 w-4 text-black ${isPendingOverdueScenariosOpen ? '' : 'hidden'}`} />
                           </div>
                         </Button>
 
-                        {isLapsedScenariosOpen && (
+                        {isPendingOverdueScenariosOpen && (
                           <div className="grid gap-4">
-                            {[...lapsedScenarios]
-                              .sort((a: any, b: any) => {
-                                // Sort by created_at descending (newest first)
-                                const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-                                const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-                                return dateB - dateA;
-                              })
-                              .map((scenario: any, index: number) => (
-                  <Card
-                    key={scenario.scenario_id || index}
-                    onClick={() => handleScenarioClick(scenario)}
-                    className="group cursor-pointer border-border hover:border-yellow-200 hover:shadow-lg transition-all duration-300 overflow-hidden"
-                  >
-                    <CardContent className="p-6">
-                      <div className="flex items-start justify-between gap-6">
-                        <div className="flex-1 space-y-4">
-                          {/* Header Section - Status */}
-                          <div className="flex items-center gap-3">
-                            <Badge 
-                              variant="outline"
-                              className={`text-xs font-medium px-3 py-1.5 ${
-                                scenario.is_completed
-                                  ? "border-green-300 bg-green-50 text-green-700"
-                                                : "border-orange-400 bg-orange-100 text-orange-700"
-                              }`}
-                            >
-                              {scenario.is_completed ? (
-                                <>
-                                  <CheckCircle className="h-3 w-3 mr-1.5" />
-                                  Completed
-                                </>
-                              ) : (
-                                <>
-                                                <AlertCircle className="h-3 w-3 mr-1.5" />
-                                                Overdue
-                                </>
-                              )}
-                            </Badge>
-                          </div>
+                            {pendingOverdueScenarios.length > 0 ? (
+                              [...pendingOverdueScenarios]
+                                .sort((a: any, b: any) => {
+                                  // Sort pending first (by days remaining), then overdue (by date)
+                                  const aIsPending = (a.days_remaining ?? 0) > 0;
+                                  const bIsPending = (b.days_remaining ?? 0) > 0;
+                                  
+                                  if (aIsPending && !bIsPending) return -1;
+                                  if (!aIsPending && bIsPending) return 1;
+                                  
+                                  if (aIsPending && bIsPending) {
+                                    const daysA = a.days_remaining ?? Infinity;
+                                    const daysB = b.days_remaining ?? Infinity;
+                                    return daysA - daysB;
+                                  } else {
+                                    const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                                    const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                                    return dateB - dateA;
+                                  }
+                                })
+                                .map((scenario: any, index: number) => {
+                                  const isPending = (scenario.days_remaining ?? 0) > 0;
+                                  return (
+                                    <Card
+                                      key={scenario.scenario_id || index}
+                                      onClick={() => handleScenarioClick(scenario)}
+                                      className="group cursor-pointer border-border hover:border-yellow-200 hover:shadow-lg transition-all duration-300 overflow-hidden"
+                                    >
+                                      <CardContent className="p-6">
+                                        <div className="flex items-start justify-between gap-6">
+                                          <div className="flex-1 space-y-4">
+                                            {/* Header Section - Status */}
+                                            <div className="flex items-center gap-3">
+                                              <Badge 
+                                                variant="outline"
+                                                className={`text-xs font-medium px-3 py-1.5 ${
+                                                  isPending
+                                                    ? 'border-red-300 bg-red-50 text-red-700'
+                                                    : 'border-orange-400 bg-orange-100 text-orange-700'
+                                                }`}
+                                              >
+                                                {isPending ? (
+                                                  <>
+                                                    <Clock className="h-3 w-3 mr-1.5" />
+                                                    Pending
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <AlertCircle className="h-3 w-3 mr-1.5" />
+                                                    Overdue
+                                                  </>
+                                                )}
+                                              </Badge>
+                                            </div>
 
-                          {/* Manager Assignment Message */}
-                          <div>
-                            <p className="text-sm font-medium text-black leading-relaxed">
-                              You have been assigned a scenario by <span className="font-semibold">{capitalizeFirstLetter(scenario.manager_name) || "Manager"}</span>
-                              {scenario.message ? (
-                                <span className="block mt-2 text-sm text-black/70 font-normal">
-                                  with this message: <span className="italic">"{scenario.message}"</span>
-                                </span>
-                              ) : null}
-                            </p>
-                          </div>
+                                            {/* Manager Assignment Message */}
+                                            <div>
+                                              <p className="text-sm font-medium text-black leading-relaxed">
+                                                You have been assigned a scenario by <span className="font-semibold">{capitalizeFirstLetter(scenario.manager_name) || "Manager"}</span>
+                                                {scenario.message ? (
+                                                  <span className="block mt-2 text-sm text-black/70 font-normal">
+                                                    with this message: <span className="italic">"{scenario.message}"</span>
+                                                  </span>
+                                                ) : null}
+                                              </p>
+                                            </div>
 
-                          {/* Information Section */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/50">
-                            <div className="flex items-start gap-3">
-                              <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                <Calendar className="h-4 w-4 text-black/60" />
-                              </div>
-                              <div>
-                                <p className="text-xs font-medium text-black/50 mb-1">Created On</p>
-                                <p className="text-sm font-semibold text-black">
-                                  {scenario.created_at 
-                                    ? new Date(scenario.created_at).toLocaleDateString('en-US', { 
-                                        weekday: 'short',
-                                        month: 'short', 
-                                        day: 'numeric',
-                                        year: 'numeric'
-                                      })
-                                    : "N/A"}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-start gap-3">
-                              <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                              <AlertCircle className="h-4 w-4 text-black/60" />
-                              </div>
-                              <div>
-                                <p className="text-xs font-medium text-black/50 mb-1">Days Remaining</p>
-                                <p className="text-sm font-semibold text-black">
-                                                0 days (Time lapsed)
-                                </p>
-                              </div>
-                            </div>
+                                            {/* Information Section */}
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/50">
+                                              <div className="flex items-start gap-3">
+                                                <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                  <Calendar className="h-4 w-4 text-black/60" />
+                                                </div>
+                                                <div>
+                                                  <p className="text-xs font-medium text-black/50 mb-1">Created On</p>
+                                                  <p className="text-sm font-semibold text-black">
+                                                    {scenario.created_at 
+                                                      ? new Date(scenario.created_at).toLocaleDateString('en-US', { 
+                                                          weekday: 'short',
+                                                          month: 'short', 
+                                                          day: 'numeric',
+                                                          year: 'numeric'
+                                                        })
+                                                      : "N/A"}
+                                                  </p>
+                                                </div>
+                                              </div>
+                                              <div className="flex items-start gap-3">
+                                                <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                  {isPending ? (
+                                                    <Clock className="h-4 w-4 text-black/60" />
+                                                  ) : (
+                                                    <AlertCircle className="h-4 w-4 text-black/60" />
+                                                  )}
+                                                </div>
+                                                <div>
+                                                  <p className="text-xs font-medium text-black/50 mb-1">Days Remaining</p>
+                                                  <p className="text-sm font-semibold text-black">
+                                                    {isPending 
+                                                      ? `${scenario.days_remaining || 0} ${scenario.days_remaining === 1 ? 'day' : 'days'}`
+                                                      : '0 days (Time lapsed)'}
+                                                  </p>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                          <ChevronRight className="h-5 w-5 text-black/30 group-hover:text-black/60 group-hover:translate-x-1 transition-all flex-shrink-0 mt-1" />
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  );
+                                })
+                            ) : (
+                              <Card>
+                                <CardContent className="p-8">
+                                  <div className="flex flex-col items-center justify-center gap-2 text-center">
+                                    <Clock className="h-8 w-8 text-red-300" />
+                                    <p className="text-sm text-muted-foreground">No pending or overdue scenarios</p>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            )}
                           </div>
-                        </div>
-                        <ChevronRight className="h-5 w-5 text-black/30 group-hover:text-black/60 group-hover:translate-x-1 transition-all flex-shrink-0 mt-1" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
                         )}
                       </div>
                     )}

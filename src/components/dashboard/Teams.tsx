@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Users, Plus, Minus, ChevronDown, Building2, TrendingUp, Calendar, User, BarChart3, Search, X, ArrowLeft, Check, Edit, Trash2, Info, Briefcase, MapPin, Factory, Building, Package, Sparkles, Target, CheckCircle, Clock, Percent, AlertCircle, UserCircle, FileText, MessageSquare, Lightbulb, Upload, Loader2 } from "lucide-react";
+import { Users, Plus, Minus, ChevronDown, Building2, TrendingUp, Calendar, User, BarChart3, Search, X, ArrowLeft, Check, Edit, Trash2, Info, Briefcase, MapPin, Factory, Building, Package, Sparkles, Target, CheckCircle, Clock, Percent, AlertCircle, UserCircle, FileText, MessageSquare, Lightbulb, Upload, Loader2, Share2 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
 import { apis } from "@/utils/apis";
 import { useApi } from "@/hooks/useApi";
@@ -209,6 +209,8 @@ export function Teams() {
   const [isAddingMembers, setIsAddingMembers] = useState(false);
   const [teamMembers, setTeamMembers] = useState<number[]>([]);
   const [teamMembersGraph, setTeamMembersGraph]: any = useState<object>({});
+  const [allTeamMembers, setAllTeamMembers] = useState<any[]>([]);
+  const [isLoadingAllMembers, setIsLoadingAllMembers] = useState(false);
   const [selectedMode, setSelectedMode] = useState<'closing' | 'discovering' | 'prospecting'>('closing');
   const [modeIds, setModeIds] = useState<Record<string, string>>({});
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -237,6 +239,7 @@ export function Teams() {
   const [modesData, setModesData] = useState<any[]>([]);
   const [personasData, setPersonasData] = useState<any[]>([]);
   const [isAssigningScenario, setIsAssigningScenario] = useState(false);
+  const [sharingSessionId, setSharingSessionId] = useState<string | number | null>(null);
   const [isPersonaDetailsOpen, setIsPersonaDetailsOpen] = useState(false);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
@@ -249,9 +252,10 @@ export function Teams() {
   const [isUserScenariosDialogOpen, setIsUserScenariosDialogOpen] = useState(false);
   const [selectedUserScenarios, setSelectedUserScenarios] = useState<any[]>([]);
   const [selectedUserInfo, setSelectedUserInfo] = useState<{ name: string; email: string; userId: string } | null>(null);
-  const [isPendingScenariosOpen, setIsPendingScenariosOpen] = useState(false);
-  const [isLapsedScenariosOpen, setIsLapsedScenariosOpen] = useState(false);
+  const [isPendingOverdueScenariosOpen, setIsPendingOverdueScenariosOpen] = useState(false);
   const [isCompletedScenariosOpen, setIsCompletedScenariosOpen] = useState(false);
+  const [isDeleteScenarioDialogOpen, setIsDeleteScenarioDialogOpen] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | number | null>(null);
   const [isPerformanceDialogOpen, setIsPerformanceDialogOpen] = useState(false);
   const [performanceData, setPerformanceData] = useState<any>(null);
   const [performanceLoading, setPerformanceLoading] = useState(false);
@@ -684,9 +688,84 @@ export function Teams() {
 
   const handleGiveScenario = async (member: any) => {
     setSelectedMemberForScenario(member);
+    setSharingSessionId(null); // Reset sharing session ID when assigning new scenario
     setIsAssignScenarioDialogOpen(true);
     // Fetch modes and personas when dialog opens
     await fetchModesAndPersonas();
+  }
+
+  const getAllTeamMembers = async () => {
+    setIsLoadingAllMembers(true);
+    try {
+      // Get all teams for the manager
+      const teamsData = await Get(`${company_teams}manager/${user?.user_id}`);
+      if (!teamsData || !Array.isArray(teamsData)) {
+        setAllTeamMembers([]);
+        return;
+      }
+
+      // Fetch members from all teams - include all members even if they appear in multiple teams
+      const allMembers: any[] = [];
+
+      for (const team of teamsData) {
+        try {
+          const teamMembersData = await Get(`${company_teams_members}team/${team.company_team_id}`);
+          if (Array.isArray(teamMembersData)) {
+            for (const member of teamMembersData) {
+              // Add all members with their team info (no deduplication)
+              allMembers.push({
+                ...member,
+                team_name: team.name,
+                team_id: team.company_team_id,
+                company_name: team.sales_company?.name || team.company_name
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching members for team ${team.company_team_id}:`, error);
+          // Continue with other teams even if one fails
+        }
+      }
+
+      setAllTeamMembers(allMembers);
+    } catch (error) {
+      console.error("Error fetching all team members:", error);
+      showToast.error("Failed to fetch all team members");
+      setAllTeamMembers([]);
+    } finally {
+      setIsLoadingAllMembers(false);
+    }
+  }
+
+  const handleShareScenario = async (scenario: any) => {
+    // Pre-fill scenario data from the existing scenario
+    // Handle different possible field structures for mode and persona
+    const modeId = scenario.mode?.mode_id || scenario.mode?.id || scenario.mode_id || scenario.mode || "";
+    const personaId = scenario.persona?.persona_id || scenario.persona?.id || scenario.persona_id || scenario.persona || "";
+    
+    setScenarioData({
+      mode: modeId.toString(),
+      persona: personaId.toString(),
+      description: scenario.scenario || scenario.description || "",
+      timeLimit: scenario.time_limit_days || 7,
+      message: scenario.message || ""
+    });
+    
+    // Store the session_id to use when creating the new scenario
+    setSharingSessionId(scenario.session_id);
+    
+    // Set a dummy member (we'll need to select a member in step 2)
+    setSelectedMemberForScenario(null);
+    setSelectedAdditionalMembers([]);
+    setScenarioStep(1);
+    setDocumentFile(null);
+    setDocumentSummary("");
+    
+    setIsAssignScenarioDialogOpen(true);
+    // Fetch modes and personas when dialog opens
+    await fetchModesAndPersonas();
+    // Fetch all team members when sharing
+    await getAllTeamMembers();
   }
 
   const fetchModesAndPersonas = async () => {
@@ -767,12 +846,30 @@ export function Teams() {
     }
 
     // Get all members to assign to (original + additional)
-    const allMembers = [
+    // Use allTeamMembers when sharing, otherwise use teamMembers
+    const membersSource = sharingSessionId ? allTeamMembers : teamMembers;
+    
+    // Get members from selected user IDs
+    const additionalMembers = selectedAdditionalMembers.map(userId => {
+      return membersSource.find((m: any) => (m?.user?.user_id || m?.user_id) === userId);
+    }).filter(Boolean);
+
+    // Combine with originally selected member (if any)
+    const allMembersRaw = [
       selectedMemberForScenario,
-      ...selectedAdditionalMembers.map(memberId => {
-        return teamMembers.find((m: any) => (m?.member_id || m?.user?.user_id) === memberId);
-      }).filter(Boolean)
+      ...additionalMembers
     ].filter(Boolean);
+
+    // Deduplicate by user_id (same user might appear in multiple teams)
+    const seenUserIds = new Set<number>();
+    const allMembers = allMembersRaw.filter((member: any) => {
+      const userId = member?.user?.user_id || member?.user_id;
+      if (userId && !seenUserIds.has(userId)) {
+        seenUserIds.add(userId);
+        return true;
+      }
+      return false;
+    });
 
     if (allMembers.length === 0) {
       showToast.error("Please select at least one member");
@@ -793,7 +890,8 @@ export function Teams() {
             continue;
           }
 
-          // Step 1: Create session
+          // Always create a new session for each member (even when sharing)
+          // This ensures the scenario is associated with the correct user/team
           const sessionPayload: any = {
             user_id: userId.toString(),
             persona_id: scenarioData.persona,
@@ -812,9 +910,11 @@ export function Teams() {
             throw new Error("Session creation failed - no session_id returned");
           }
 
+          const sessionIdToUse = sessionResponse.session_id;
+
           // Step 2: Create scenario
           const scenarioPayload = {
-            session_id: sessionResponse.session_id,
+            session_id: sessionIdToUse,
             manager_id: user.user_id.toString(),
             time_limit_days: scenarioData.timeLimit,
             message: scenarioData.message?.trim() || ""
@@ -858,6 +958,7 @@ export function Teams() {
         setIsUploadingDocument(false);
         setIsAssignScenarioDialogOpen(false);
         setSelectedMemberForScenario(null);
+        setSharingSessionId(null); // Reset sharing session ID
       }
     } catch (error) {
       console.error("Error assigning scenario:", error);
@@ -867,11 +968,12 @@ export function Teams() {
     }
   }
 
-  const toggleAdditionalMember = (memberId: number) => {
-    setSelectedAdditionalMembers(prev => 
-      prev.includes(memberId) 
-        ? prev.filter(id => id !== memberId)
-        : [...prev, memberId]
+  const toggleAdditionalMember = (userId: number) => {
+    // Use user_id for selection to sync across teams (same user in multiple teams)
+    setSelectedAdditionalMembers(prev =>
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
     );
   }
 
@@ -1041,6 +1143,31 @@ export function Teams() {
     }
   }
 
+  const handleDeleteScenario = async () => {
+    if (!deletingSessionId) return;
+    try {
+      await Delete(`/v1/sessions/${deletingSessionId}`, { session_id: deletingSessionId });
+      showToast.success("Scenario deleted successfully!");
+      // Refresh scenario dashboard and user scenarios
+      await getScenarioDashboard();
+      // Update selected user scenarios if dialog is open
+      if (isUserScenariosDialogOpen && selectedUserScenarios) {
+        const updatedScenarios = selectedUserScenarios.filter((s: any) => s.session_id !== deletingSessionId);
+        setSelectedUserScenarios(updatedScenarios);
+      }
+      setIsDeleteScenarioDialogOpen(false);
+      setDeletingSessionId(null);
+    } catch (error) {
+      console.error("Error deleting scenario:", error);
+      showToast.error("Failed to delete scenario");
+    }
+  }
+
+  const openDeleteScenarioDialog = (session_id: string | number) => {
+    setDeletingSessionId(session_id);
+    setIsDeleteScenarioDialogOpen(true);
+  }
+
   useEffect(() => {
     if (user?.user_id) {
       getTeams()
@@ -1086,12 +1213,13 @@ export function Teams() {
     fetchInteractionModes();
   }, [])
 
-  // Open pending scenarios by default when there are pending scenarios
+  // Open pending/overdue scenarios by default when there are pending or overdue scenarios
   useEffect(() => {
     if (selectedUserScenarios && selectedUserScenarios.length > 0) {
       const pendingScenarios = selectedUserScenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) > 0);
-      if (pendingScenarios.length > 0) {
-        setIsPendingScenariosOpen(true);
+      const lapsedScenarios = selectedUserScenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) === 0);
+      if (pendingScenarios.length > 0 || lapsedScenarios.length > 0) {
+        setIsPendingOverdueScenariosOpen(true);
       }
     }
   }, [selectedUserScenarios])
@@ -1870,7 +1998,7 @@ export function Teams() {
                     {/* Pending Count */}
                     <div className="p-4 rounded-lg border bg-orange-50 border-orange-200">
                       <div className="flex items-center justify-between mb-2">
-                        <p className="text-sm font-medium text-black/70">Pending</p>
+                        <p className="text-sm font-medium text-black/70">Pending/Overdue</p>
                         <Clock className="h-4 w-4 text-orange-600" />
                       </div>
                       <p className="text-2xl font-bold text-black">{scenarioDashboardData?.pending_count || 0}</p>
@@ -2026,306 +2154,231 @@ export function Teams() {
                       const pendingScenarios = selectedUserScenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) > 0);
                       const lapsedScenarios = selectedUserScenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) === 0);
                       const completedScenarios = selectedUserScenarios.filter((s: any) => s.is_completed);
+                      const pendingOverdueScenarios = [...pendingScenarios, ...lapsedScenarios];
                       
                       return (
                         <>
-                          {/* Pending Scenarios */}
-                          <div className="space-y-4">
-                            <Button
-                              variant="outline"
-                              onClick={() => setIsPendingScenariosOpen(!isPendingScenariosOpen)}
-                              className="w-full flex items-center justify-between p-4 h-auto border-2 border-border bg-card hover:bg-muted"
-                            >
-                              <div className="flex items-center gap-3">
-                                <Clock className="h-5 w-5 text-black" />
-                                <span className="text-lg font-semibold text-black">Pending</span>
-                                <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300">
-                                  {pendingScenarios.length} {pendingScenarios.length === 1 ? 'scenario' : 'scenarios'}
-                                </Badge>
-                              </div>
-                              <div className="w-6 h-6 rounded bg-[#FFDE5A] flex items-center justify-center shrink-0">
-                                <Plus className={`h-4 w-4 text-black ${isPendingScenariosOpen ? 'hidden' : ''}`} />
-                                <Minus className={`h-4 w-4 text-black ${isPendingScenariosOpen ? '' : 'hidden'}`} />
-                              </div>
-                            </Button>
-
-                            {isPendingScenariosOpen && (
-                              <div className="grid gap-4">
-                                {pendingScenarios.length > 0 ? (
-                                  [...pendingScenarios]
-                                    .sort((a: any, b: any) => {
-                          const daysA = a.days_remaining ?? Infinity;
-                          const daysB = b.days_remaining ?? Infinity;
-                          return daysA - daysB;
-                      })
-                      .map((scenario: any, index: number) => (
-                                      <Card
-                        key={scenario.scenario_id || index}
-                                        className="border-border hover:border-yellow-200 hover:shadow-lg transition-all duration-300 overflow-hidden"
-                                      >
-                                        <CardContent className="p-6">
-                                          <div className="flex items-start justify-between gap-6">
-                                            <div className="flex-1 space-y-4">
-                                              {/* Header Section - Status */}
-                                              <div className="flex items-center gap-3">
-                                <Badge 
-                                  variant="outline"
-                                                  className="text-xs font-medium px-3 py-1.5 border-red-300 bg-red-50 text-red-700"
-                                                >
-                                                  <Clock className="h-3 w-3 mr-1.5" />
-                                      Pending
-                                </Badge>
-                          </div>
-
-                                              {/* Information Section */}
-                                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/50">
-                                                <div className="flex items-start gap-3">
-                                                  <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                                    <Calendar className="h-4 w-4 text-black/60" />
-                                                  </div>
-                                                  <div>
-                                                    <p className="text-xs font-medium text-black/50 mb-1">Created On</p>
-                                                    <p className="text-sm font-semibold text-black">
-                                                      {scenario.created_at 
-                                                        ? new Date(scenario.created_at).toLocaleDateString('en-US', { 
-                                                            weekday: 'short',
-                                                            month: 'short', 
-                                                            day: 'numeric',
-                                                            year: 'numeric'
-                                                          })
-                                                        : "N/A"}
-                                                    </p>
-                                                  </div>
-                                                </div>
-                                                <div className="flex items-start gap-3">
-                                                  <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                                    <Target className="h-4 w-4 text-black/60" />
-                                                  </div>
-                                                  <div>
-                                                    <p className="text-xs font-medium text-black/50 mb-1">Deadline</p>
-                                                    <p className="text-sm font-semibold text-black">{scenario.time_limit_days || 0} days</p>
-                                                  </div>
-                                                </div>
-                                                <div className="flex items-start gap-3">
-                                                  <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                                    <Target className="h-4 w-4 text-black/60" />
-                                                  </div>
-                                                  <div>
-                                                    <p className="text-xs font-medium text-black/50 mb-1">Mode</p>
-                                                    <p className="text-sm font-semibold text-black">
-                                                      {formatText(scenario.mode?.name || scenario.mode_name || scenario.mode || "N/A")}
-                                                    </p>
-                                                  </div>
-                                                </div>
-                                                <div className="flex items-start gap-3">
-                                                  <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                                    <UserCircle className="h-4 w-4 text-black/60" />
-                                                  </div>
-                                                  <div>
-                                                    <p className="text-xs font-medium text-black/50 mb-1">Persona</p>
-                                                    <p className="text-sm font-semibold text-black">
-                                                      {scenario.persona?.name || scenario.persona_name || scenario.persona || "N/A"}
-                                                    </p>
-                                                  </div>
-                                                </div>
-                                                <div className="flex items-start gap-3">
-                                                  <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                                    <Clock className="h-4 w-4 text-black/60" />
-                                                  </div>
-                                                  <div>
-                                                    <p className="text-xs font-medium text-black/50 mb-1">Days Remaining</p>
-                                                    <p className="text-sm font-semibold text-black">
-                                                      {scenario.days_remaining || 0} {scenario.days_remaining === 1 ? 'day' : 'days'}
-                                                    </p>
-                                                  </div>
-                                                </div>
-                                              </div>
-
-                                              {/* Scenario Message */}
-                          {scenario.scenario && (
-                                                <div className="pt-3 border-t border-border/50">
-                              <div className="flex items-start gap-2">
-                                <FileText className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
-                                <div className="flex-1">
-                                  <p className="text-xs font-medium text-black/60 mb-1">Scenario Message</p>
-                                  <p className="text-sm text-black leading-relaxed">{scenario.scenario}</p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Manager Message */}
-                          {scenario.message && (
-                                                <div className="pt-2">
-                              <div className="flex items-start gap-2">
-                                <Info className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
-                                <div className="flex-1">
-                                  <p className="text-xs font-medium text-black/60 mb-1">Message</p>
-                                  <p className="text-sm text-black leading-relaxed italic">"{scenario.message}"</p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                                        </CardContent>
-                                      </Card>
-                                    ))
-                                ) : (
-                                  <Card>
-                                    <CardContent className="p-8">
-                                      <div className="flex flex-col items-center justify-center gap-2 text-center">
-                                        <Clock className="h-8 w-8 text-red-300" />
-                                        <p className="text-sm text-muted-foreground">No pending scenarios</p>
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                            {/* Lapsed Scenarios */}
-                            {lapsedScenarios.length > 0 && (
-                              <div className="space-y-4">
-                                <Button
-                                  variant="outline"
-                                  onClick={() => setIsLapsedScenariosOpen(!isLapsedScenariosOpen)}
-                                  className="w-full flex items-center justify-between p-4 h-auto border-2 border-border bg-card hover:bg-muted"
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <AlertCircle className="h-5 w-5 text-black" />
-                                    <span className="text-lg font-semibold text-black">Overdue</span>
+                          {/* Pending/Overdue Scenarios */}
+                          {(pendingScenarios.length > 0 || lapsedScenarios.length > 0) && (
+                            <div className="space-y-4">
+                              <Button
+                                variant="outline"
+                                onClick={() => setIsPendingOverdueScenariosOpen(!isPendingOverdueScenariosOpen)}
+                                className="w-full flex items-center justify-between p-4 h-auto border-2 border-border bg-card hover:bg-muted"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <Clock className="h-5 w-5 text-black" />
+                                  <span className="text-lg font-semibold text-black">Pending/Overdue</span>
+                                  <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300">
+                                    {pendingScenarios.length} {pendingScenarios.length === 1 ? 'pending' : 'pending'}
+                                  </Badge>
+                                  {lapsedScenarios.length > 0 && (
                                     <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
-                                      {lapsedScenarios.length} {lapsedScenarios.length === 1 ? 'scenario' : 'scenarios'}
+                                      {lapsedScenarios.length} {lapsedScenarios.length === 1 ? 'overdue' : 'overdue'}
                                     </Badge>
-                                  </div>
-                                  <div className="w-6 h-6 rounded bg-[#FFDE5A] flex items-center justify-center shrink-0">
-                                    <Plus className={`h-4 w-4 text-black ${isLapsedScenariosOpen ? 'hidden' : ''}`} />
-                                    <Minus className={`h-4 w-4 text-black ${isLapsedScenariosOpen ? '' : 'hidden'}`} />
-                                  </div>
-                                </Button>
+                                  )}
+                                </div>
+                                <div className="w-6 h-6 rounded bg-[#FFDE5A] flex items-center justify-center shrink-0">
+                                  <Plus className={`h-4 w-4 text-black ${isPendingOverdueScenariosOpen ? 'hidden' : ''}`} />
+                                  <Minus className={`h-4 w-4 text-black ${isPendingOverdueScenariosOpen ? '' : 'hidden'}`} />
+                                </div>
+                              </Button>
 
-                                {isLapsedScenariosOpen && (
-                                  <div className="grid gap-4">
-                                    {[...lapsedScenarios]
+                              {isPendingOverdueScenariosOpen && (
+                                <div className="grid gap-4">
+                                  {pendingOverdueScenarios.length > 0 ? (
+                                    [...pendingOverdueScenarios]
                                       .sort((a: any, b: any) => {
-                                        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-                                        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-                                        return dateB - dateA;
+                                        // Sort pending first (by days remaining), then overdue (by date)
+                                        const aIsPending = (a.days_remaining ?? 0) > 0;
+                                        const bIsPending = (b.days_remaining ?? 0) > 0;
+                                        
+                                        if (aIsPending && !bIsPending) return -1;
+                                        if (!aIsPending && bIsPending) return 1;
+                                        
+                                        if (aIsPending && bIsPending) {
+                                          const daysA = a.days_remaining ?? Infinity;
+                                          const daysB = b.days_remaining ?? Infinity;
+                                          return daysA - daysB;
+                                        } else {
+                                          const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                                          const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                                          return dateB - dateA;
+                                        }
                                       })
-                                      .map((scenario: any, index: number) => (
-                                        <Card
-                                          key={scenario.scenario_id || index}
-                                          className="border-border hover:border-yellow-200 hover:shadow-lg transition-all duration-300 overflow-hidden"
-                                        >
-                                          <CardContent className="p-6">
-                                            <div className="flex items-start justify-between gap-6">
-                                              <div className="flex-1 space-y-4">
-                                                <div className="flex items-center gap-3">
-                                                  <Badge 
-                                                    variant="outline"
-                                                    className="text-xs font-medium px-3 py-1.5 border-orange-400 bg-orange-100 text-orange-700"
-                                                  >
-                                                    <AlertCircle className="h-3 w-3 mr-1.5" />
-                                                    Overdue
-                                                  </Badge>
-                                                </div>
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/50">
-                                                  <div className="flex items-start gap-3">
-                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                                      <Calendar className="h-4 w-4 text-black/60" />
-                                                    </div>
-                                                    <div>
-                                                      <p className="text-xs font-medium text-black/50 mb-1">Created On</p>
-                                                      <p className="text-sm font-semibold text-black">
-                                                        {scenario.created_at 
-                                                          ? new Date(scenario.created_at).toLocaleDateString('en-US', { 
-                                                              weekday: 'short',
-                                                              month: 'short', 
-                                                              day: 'numeric',
-                                                              year: 'numeric'
-                                                            })
-                                                          : "N/A"}
-                                                      </p>
-                                                    </div>
-                                                  </div>
-                                                  <div className="flex items-start gap-3">
-                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                                      <Target className="h-4 w-4 text-black/60" />
-                                                    </div>
-                                                    <div>
-                                                      <p className="text-xs font-medium text-black/50 mb-1">Deadline</p>
-                                                      <p className="text-sm font-semibold text-black">{scenario.time_limit_days || 0} days</p>
-                                                    </div>
-                                                  </div>
-                                                  <div className="flex items-start gap-3">
-                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                                      <Target className="h-4 w-4 text-black/60" />
-                                                    </div>
-                                                    <div>
-                                                      <p className="text-xs font-medium text-black/50 mb-1">Mode</p>
-                                                      <p className="text-sm font-semibold text-black">
-                                                        {formatText(scenario.mode?.name || scenario.mode_name || scenario.mode || "N/A")}
-                                                      </p>
-                                                    </div>
-                                                  </div>
-                                                  <div className="flex items-start gap-3">
-                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                                      <UserCircle className="h-4 w-4 text-black/60" />
-                                                    </div>
-                                                    <div>
-                                                      <p className="text-xs font-medium text-black/50 mb-1">Persona</p>
-                                                      <p className="text-sm font-semibold text-black">
-                                                        {scenario.persona?.name || scenario.persona_name || scenario.persona || "N/A"}
-                                                      </p>
+                                      .map((scenario: any, index: number) => {
+                                        const isPending = (scenario.days_remaining ?? 0) > 0;
+                                        return (
+                                          <Card
+                                            key={scenario.scenario_id || index}
+                                            className="border-border hover:border-yellow-200 hover:shadow-lg transition-all duration-300 overflow-hidden"
+                                          >
+                                            <CardContent className="p-6">
+                                              <div className="flex items-start justify-between gap-6">
+                                                <div className="flex-1 space-y-4">
+                                                  {/* Header Section - Status */}
+                                                  <div className="flex items-center justify-between gap-3">
+                                                    <Badge 
+                                                      variant="outline"
+                                                      className={`text-xs font-medium px-3 py-1.5 ${
+                                                        isPending 
+                                                          ? 'border-red-300 bg-red-50 text-red-700'
+                                                          : 'border-orange-400 bg-orange-100 text-orange-700'
+                                                      }`}
+                                                    >
+                                                      {isPending ? (
+                                                        <>
+                                                          <Clock className="h-3 w-3 mr-1.5" />
+                                                          Pending
+                                                        </>
+                                                      ) : (
+                                                        <>
+                                                          <AlertCircle className="h-3 w-3 mr-1.5" />
+                                                          Overdue
+                                                        </>
+                                                      )}
+                                                    </Badge>
+                                                    <div className="flex items-center gap-2">
+                                                      {scenario.session_id && (
+                                                        <>
+                                                          <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => handleShareScenario(scenario)}
+                                                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                            title="Share scenario"
+                                                          >
+                                                            <Share2 className="h-4 w-4" />
+                                                          </Button>
+                                                          <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => openDeleteScenarioDialog(scenario.session_id)}
+                                                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                            title="Delete scenario"
+                                                          >
+                                                            <Trash2 className="h-4 w-4" />
+                                                          </Button>
+                                                        </>
+                                                      )}
                                                     </div>
                                                   </div>
-                                                  <div className="flex items-start gap-3">
-                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                                      <AlertCircle className="h-4 w-4 text-black/60" />
-                                                    </div>
-                                                    <div>
-                                                      <p className="text-xs font-medium text-black/50 mb-1">Days Remaining</p>
-                                                      <p className="text-sm font-semibold text-black">0 days (Time lapsed)</p>
-                                                    </div>
-                                                  </div>
-                                                </div>
 
-                                                {/* Scenario Message */}
-                                                {scenario.scenario && (
-                                                  <div className="pt-3 border-t border-border/50">
-                                                    <div className="flex items-start gap-2">
-                                                      <FileText className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
-                                                      <div className="flex-1">
-                                                        <p className="text-xs font-medium text-black/60 mb-1">Scenario Message</p>
-                                                        <p className="text-sm text-black leading-relaxed">{scenario.scenario}</p>
+                                                  {/* Information Section */}
+                                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/50">
+                                                    <div className="flex items-start gap-3">
+                                                      <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                        <Calendar className="h-4 w-4 text-black/60" />
+                                                      </div>
+                                                      <div>
+                                                        <p className="text-xs font-medium text-black/50 mb-1">Created On</p>
+                                                        <p className="text-sm font-semibold text-black">
+                                                          {scenario.created_at 
+                                                            ? new Date(scenario.created_at).toLocaleDateString('en-US', { 
+                                                                weekday: 'short',
+                                                                month: 'short', 
+                                                                day: 'numeric',
+                                                                year: 'numeric'
+                                                              })
+                                                            : "N/A"}
+                                                        </p>
+                                                      </div>
+                                                    </div>
+                                                    <div className="flex items-start gap-3">
+                                                      <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                        <Target className="h-4 w-4 text-black/60" />
+                                                      </div>
+                                                      <div>
+                                                        <p className="text-xs font-medium text-black/50 mb-1">Deadline</p>
+                                                        <p className="text-sm font-semibold text-black">{scenario.time_limit_days || 0} days</p>
+                                                      </div>
+                                                    </div>
+                                                    <div className="flex items-start gap-3">
+                                                      <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                        <Target className="h-4 w-4 text-black/60" />
+                                                      </div>
+                                                      <div>
+                                                        <p className="text-xs font-medium text-black/50 mb-1">Mode</p>
+                                                        <p className="text-sm font-semibold text-black">
+                                                          {formatText(scenario.mode?.name || scenario.mode_name || scenario.mode || "N/A")}
+                                                        </p>
+                                                      </div>
+                                                    </div>
+                                                    <div className="flex items-start gap-3">
+                                                      <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                        <UserCircle className="h-4 w-4 text-black/60" />
+                                                      </div>
+                                                      <div>
+                                                        <p className="text-xs font-medium text-black/50 mb-1">Persona</p>
+                                                        <p className="text-sm font-semibold text-black">
+                                                          {scenario.persona?.name || scenario.persona_name || scenario.persona || "N/A"}
+                                                        </p>
+                                                      </div>
+                                                    </div>
+                                                    <div className="flex items-start gap-3">
+                                                      <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                                                        {isPending ? (
+                                                          <Clock className="h-4 w-4 text-black/60" />
+                                                        ) : (
+                                                          <AlertCircle className="h-4 w-4 text-black/60" />
+                                                        )}
+                                                      </div>
+                                                      <div>
+                                                        <p className="text-xs font-medium text-black/50 mb-1">Days Remaining</p>
+                                                        <p className="text-sm font-semibold text-black">
+                                                          {isPending 
+                                                            ? `${scenario.days_remaining || 0} ${scenario.days_remaining === 1 ? 'day' : 'days'}`
+                                                            : '0 days (Time lapsed)'}
+                                                        </p>
                                                       </div>
                                                     </div>
                                                   </div>
-                                                )}
 
-                                                {/* Manager Message */}
-                                                {scenario.message && (
-                                                  <div className="pt-2">
-                                                    <div className="flex items-start gap-2">
-                                                      <Info className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
-                                                      <div className="flex-1">
-                                                        <p className="text-xs font-medium text-black/60 mb-1">Message</p>
-                                                        <p className="text-sm text-black leading-relaxed italic">"{scenario.message}"</p>
+                                                  {/* Scenario Message */}
+                                                  {scenario.scenario && (
+                                                    <div className="pt-3 border-t border-border/50">
+                                                      <div className="flex items-start gap-2">
+                                                        <FileText className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
+                                                        <div className="flex-1">
+                                                          <p className="text-xs font-medium text-black/60 mb-1">Scenario Message</p>
+                                                          <p className="text-sm text-black leading-relaxed">{scenario.scenario}</p>
+                                                        </div>
                                                       </div>
                                                     </div>
-                                                  </div>
-                                                )}
+                                                  )}
+
+                                                  {/* Manager Message */}
+                                                  {scenario.message && (
+                                                    <div className="pt-2">
+                                                      <div className="flex items-start gap-2">
+                                                        <Info className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
+                                                        <div className="flex-1">
+                                                          <p className="text-xs font-medium text-black/60 mb-1">Message</p>
+                                                          <p className="text-sm text-black leading-relaxed italic">"{scenario.message}"</p>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  )}
+                                                </div>
                                               </div>
-                                            </div>
-                                          </CardContent>
-                                        </Card>
-                                      ))}
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                                            </CardContent>
+                                          </Card>
+                                        );
+                                      })
+                                  ) : (
+                                    <Card>
+                                      <CardContent className="p-8">
+                                        <div className="flex flex-col items-center justify-center gap-2 text-center">
+                                          <Clock className="h-8 w-8 text-red-300" />
+                                          <p className="text-sm text-muted-foreground">No pending or overdue scenarios</p>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
 
                             {/* Completed Scenarios */}
                             {completedScenarios.length > 0 && (
@@ -2364,7 +2417,7 @@ export function Teams() {
                                           <CardContent className="p-6">
                                             <div className="flex items-start justify-between gap-6">
                                               <div className="flex-1 space-y-4">
-                                                <div className="flex items-center gap-3">
+                                                <div className="flex items-center justify-between gap-3">
                                                   <Badge 
                                                     variant="outline"
                                                     className="text-xs font-medium px-3 py-1.5 border-green-300 bg-green-50 text-green-700"
@@ -2372,6 +2425,30 @@ export function Teams() {
                                                     <CheckCircle className="h-3 w-3 mr-1.5" />
                                                     Completed
                                                   </Badge>
+                                                  <div className="flex items-center gap-2">
+                                                    {scenario.session_id && (
+                                                      <>
+                                                        <Button
+                                                          variant="ghost"
+                                                          size="sm"
+                                                          onClick={() => handleShareScenario(scenario)}
+                                                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                          title="Share scenario"
+                                                        >
+                                                          <Share2 className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button
+                                                          variant="ghost"
+                                                          size="sm"
+                                                          onClick={() => openDeleteScenarioDialog(scenario.session_id)}
+                                                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                          title="Delete scenario"
+                                                        >
+                                                          <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                      </>
+                                                    )}
+                                                  </div>
                                                 </div>
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/50">
                                                   <div className="flex items-start gap-3">
@@ -2490,6 +2567,33 @@ export function Teams() {
               )}
             </DialogContent>
           </Dialog>
+
+          {/* Delete Scenario Confirmation Dialog */}
+          <AlertDialog open={isDeleteScenarioDialogOpen} onOpenChange={(open) => {
+            setIsDeleteScenarioDialogOpen(open);
+            if (!open) setDeletingSessionId(null);
+          }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Scenario?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete this scenario? This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => {
+                  setIsDeleteScenarioDialogOpen(false);
+                  setDeletingSessionId(null);
+                }}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className="text-[#ef4343]"
+                  onClick={handleDeleteScenario}
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Performance Report Dialog */}
           <Dialog open={isPerformanceDialogOpen} onOpenChange={setIsPerformanceDialogOpen}>
@@ -2863,24 +2967,28 @@ export function Teams() {
               setDocumentFile(null);
               setDocumentSummary("");
               setIsUploadingDocument(false);
+              setSharingSessionId(null); // Reset sharing session ID when dialog closes
             }
           }}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader className="pb-4">
-                <DialogTitle className="text-2xl font-bold">Assign Scenario</DialogTitle>
+                <DialogTitle className="text-2xl font-bold">
+                  {sharingSessionId ? "Share Scenario" : "Assign Scenario"}
+                </DialogTitle>
               </DialogHeader>
               
               {scenarioStep === 1 ? (
                 // Step 1: Select mode, persona, and write scenario
                 <div className="space-y-6 py-2">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="space-y-3">
+                    <div className={`space-y-3 ${sharingSessionId ? "opacity-60 pointer-events-none" : ""}`}>
                       <Label htmlFor="scenario-mode" className="text-base font-semibold">
                         Mode <span className="text-destructive">*</span>
                       </Label>
                   <Select
                     value={scenarioData.mode}
-                    onValueChange={(value) => setScenarioData(prev => ({ ...prev, mode: value }))}
+                        onValueChange={(value) => !sharingSessionId && setScenarioData(prev => ({ ...prev, mode: value }))}
+                        disabled={!!sharingSessionId}
                   >
                         <SelectTrigger 
                           id="scenario-mode" 
@@ -2911,13 +3019,14 @@ export function Teams() {
                       )}
                 </div>
 
-                    <div className="space-y-3">
+                    <div className={`space-y-3 ${sharingSessionId ? "opacity-60 pointer-events-none" : ""}`}>
                       <Label htmlFor="scenario-persona" className="text-base font-semibold">
                         Persona <span className="text-destructive">*</span>
                       </Label>
                   <Select
                     value={scenarioData.persona}
-                    onValueChange={(value) => setScenarioData(prev => ({ ...prev, persona: value }))}
+                        onValueChange={(value) => !sharingSessionId && setScenarioData(prev => ({ ...prev, persona: value }))}
+                        disabled={!!sharingSessionId}
                   >
                         <SelectTrigger 
                           id="scenario-persona" 
@@ -2987,7 +3096,7 @@ export function Teams() {
                   </div>
 
                   {/* Document Upload Section */}
-                  <div className="space-y-3">
+                  <div className={`space-y-3 ${sharingSessionId ? "opacity-60 pointer-events-none" : ""}`}>
                     <Label htmlFor="document-upload" className="text-base font-semibold">
                       Upload Document (Optional)
                     </Label>
@@ -3006,7 +3115,7 @@ export function Teams() {
                               type="button"
                               variant="outline"
                               className="cursor-pointer"
-                              disabled={isUploadingDocument}
+                              disabled={isUploadingDocument || !!sharingSessionId}
                               asChild
                             >
                               <span>
@@ -3030,7 +3139,7 @@ export function Teams() {
                             accept=".pdf,.doc,.docx"
                             onChange={handleFileChange}
                             className="hidden"
-                            disabled={isUploadingDocument}
+                            disabled={isUploadingDocument || !!sharingSessionId}
                           />
                         </div>
                       ) : (
@@ -3053,15 +3162,17 @@ export function Teams() {
                                 </p>
                               </div>
                             </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={handleRemoveDocument}
-                              disabled={isUploadingDocument}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
+                            {!sharingSessionId && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleRemoveDocument}
+                                disabled={isUploadingDocument}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                           {isUploadingDocument && (
                             <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground">
@@ -3074,7 +3185,7 @@ export function Teams() {
                     </div>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className={`space-y-3 ${sharingSessionId ? "opacity-60" : ""}`}>
                     <Label htmlFor="scenario-description" className="text-base font-semibold">
                       Scenario <span className="text-destructive">*</span>
                     </Label>
@@ -3082,7 +3193,8 @@ export function Teams() {
                       id="scenario-description"
                       placeholder="Write your scenario description here..."
                       value={scenarioData.description}
-                      onChange={(e) => setScenarioData(prev => ({ ...prev, description: e.target.value }))}
+                      onChange={(e) => !sharingSessionId && setScenarioData(prev => ({ ...prev, description: e.target.value }))}
+                      disabled={!!sharingSessionId}
                       className={`min-h-[200px] text-base resize-none ${!scenarioData.description.trim() ? "border-red-500" : ""}`}
                     />
                     <p className="text-sm text-muted-foreground">
@@ -3126,55 +3238,135 @@ export function Teams() {
                   <div className="space-y-4">
                     <div>
                       <Label className="text-base font-semibold mb-3 block">
-                        Assign same scenario to other team members
+                        {sharingSessionId 
+                          ? "Select team members to assign this scenario (from all teams)"
+                          : "Assign same scenario to other team members"}
                       </Label>
-                      <div className="border rounded-lg p-4 max-h-[400px] overflow-y-auto space-y-2">
-                        {teamMembers && teamMembers.length > 0 ? (
-                          teamMembers
-                            .filter((member: any) => {
-                              const memberId = member?.member_id || member?.user?.user_id;
-                              const selectedId = selectedMemberForScenario?.member_id || selectedMemberForScenario?.user?.user_id;
-                              return memberId !== selectedId;
-                            })
-                            .map((member: any, index: number) => {
-                              const memberId = (member?.member_id || member?.user?.user_id) as number;
-                              const isSelected = selectedAdditionalMembers.includes(memberId);
+                      {isLoadingAllMembers && sharingSessionId ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                          <span className="text-sm text-muted-foreground">Loading all team members...</span>
+                        </div>
+                      ) : (
+                        <div className="border rounded-lg p-4 max-h-[400px] overflow-y-auto space-y-2">
+                          {(() => {
+                            // Use allTeamMembers when sharing, otherwise use teamMembers
+                            const membersToShow = sharingSessionId ? allTeamMembers : teamMembers;
+                            
+                            if (!membersToShow || membersToShow.length === 0) {
                               return (
-                                <div
-                                  key={memberId || `member-${index}`}
-                                  className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
-                                    isSelected 
-                                      ? "bg-primary/10 border-primary" 
-                                      : "hover:bg-muted/50"
-                                  }`}
-                                  onClick={() => toggleAdditionalMember(memberId)}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <Avatar className="h-10 w-10">
-                                      <AvatarImage src={member?.user?.avatar} />
-                                      <AvatarFallback>
-                                        {member?.user?.first_name?.[0]}{member?.user?.last_name?.[0]}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                    <div>
-                                      <p className="font-medium">
-                                        {member?.user?.first_name} {member?.user?.last_name}
-                                      </p>
-                                      <p className="text-sm text-muted-foreground">{member?.user?.email}</p>
-                                    </div>
-                                  </div>
-                                  {isSelected && (
-                                    <Check className="h-5 w-5 text-primary" />
-                                  )}
+                                <div className="text-center py-8 text-muted-foreground">
+                                  {sharingSessionId 
+                                    ? "No team members found across all teams"
+                                    : "No team members available"}
                                 </div>
                               );
-                            })
-                        ) : (
-                          <div className="p-4 text-center text-muted-foreground">
-                            No other team members available
-                          </div>
-                        )}
-                      </div>
+                            }
+
+                            // Group members by team when sharing
+                            if (sharingSessionId) {
+                              const groupedByTeam: Record<string, any[]> = {};
+                              membersToShow.forEach((member: any) => {
+                                const teamKey = member.team_name || member.team_id || 'Unknown Team';
+                                if (!groupedByTeam[teamKey]) {
+                                  groupedByTeam[teamKey] = [];
+                                }
+                                groupedByTeam[teamKey].push(member);
+                              });
+
+                              return Object.entries(groupedByTeam).map(([teamName, teamMembersList]) => (
+                                <div key={teamName} className="mb-4 last:mb-0">
+                                  <div className="mb-2 px-2">
+                                    <p className="text-sm font-semibold text-black/70">{teamName}</p>
+                                    {teamMembersList[0]?.company_name && (
+                                      <p className="text-xs text-muted-foreground">{teamMembersList[0].company_name}</p>
+                                    )}
+                                  </div>
+                                  <div className="space-y-2">
+                                    {teamMembersList.map((member: any, index: number) => {
+                                      // Use user_id for selection to sync across teams
+                                      const userId = (member?.user?.user_id || member?.user_id) as number;
+                                      const isSelected = selectedAdditionalMembers.includes(userId);
+                                      const uniqueKey = `${teamName}-${userId}-${index}`;
+                                      return (
+                                        <div
+                                          key={uniqueKey}
+                                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
+                                            isSelected 
+                                              ? "bg-primary/10 border-primary" 
+                                              : "hover:bg-muted/50"
+                                          }`}
+                                          onClick={() => toggleAdditionalMember(userId)}
+                                        >
+                                          <div className="flex items-center gap-3">
+                                            <Avatar className="h-10 w-10">
+                                              <AvatarImage src={member?.user?.avatar} />
+                                              <AvatarFallback>
+                                                {member?.user?.first_name?.[0]}{member?.user?.last_name?.[0]}
+                                              </AvatarFallback>
+                                            </Avatar>
+                                            <div>
+                                              <p className="font-medium">
+                                                {member?.user?.first_name} {member?.user?.last_name}
+                                              </p>
+                                              <p className="text-sm text-muted-foreground">{member?.user?.email}</p>
+                                            </div>
+                                          </div>
+                                          {isSelected && (
+                                            <Check className="h-5 w-5 text-primary" />
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ));
+                            }
+
+                            // Regular flow (not sharing) - show team members
+                            return membersToShow
+                              .filter((member: any) => {
+                                const userId = member?.user?.user_id || member?.user_id;
+                                const selectedId = selectedMemberForScenario?.user?.user_id || selectedMemberForScenario?.user_id;
+                                return userId !== selectedId;
+                              })
+                              .map((member: any, index: number) => {
+                                // Use user_id for selection
+                                const userId = (member?.user?.user_id || member?.user_id) as number;
+                                const isSelected = selectedAdditionalMembers.includes(userId);
+                                return (
+                                  <div
+                                    key={userId || `member-${index}`}
+                                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
+                                      isSelected 
+                                        ? "bg-primary/10 border-primary" 
+                                        : "hover:bg-muted/50"
+                                    }`}
+                                    onClick={() => toggleAdditionalMember(userId)}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <Avatar className="h-10 w-10">
+                                        <AvatarImage src={member?.user?.avatar} />
+                                        <AvatarFallback>
+                                          {member?.user?.first_name?.[0]}{member?.user?.last_name?.[0]}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <div>
+                                        <p className="font-medium">
+                                          {member?.user?.first_name} {member?.user?.last_name}
+                                        </p>
+                                        <p className="text-sm text-muted-foreground">{member?.user?.email}</p>
+                                      </div>
+                                    </div>
+                                    {isSelected && (
+                                      <Check className="h-5 w-5 text-primary" />
+                                    )}
+                                  </div>
+                                );
+                              });
+                          })()}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -3205,12 +3397,12 @@ export function Teams() {
                     </Button>
                     <Button
                       className="flex-1 h-12 text-base font-semibold"
-                  onClick={handleAssignScenario}
+                      onClick={handleAssignScenario}
                       disabled={isAssigningScenario}
-                >
+                    >
                       {isAssigningScenario ? "Assigning Scenario..." : "Assign Scenario"}
-                </Button>
-              </div>
+                    </Button>
+                  </div>
                 </div>
               )}
             </DialogContent>
