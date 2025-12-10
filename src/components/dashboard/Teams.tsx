@@ -232,8 +232,10 @@ export function Teams() {
     persona: "",
     description: "",
     timeLimit: 7,
-    message: ""
+    message: "",
+    title: ""
   });
+  const [titleTouched, setTitleTouched] = useState(false);
   const [scenarioStep, setScenarioStep] = useState<1 | 2>(1);
   const [selectedAdditionalMembers, setSelectedAdditionalMembers] = useState<number[]>([]);
   const [modesData, setModesData] = useState<any[]>([]);
@@ -748,7 +750,8 @@ export function Teams() {
       persona: personaId.toString(),
       description: scenario.scenario || scenario.description || "",
       timeLimit: scenario.time_limit_days || 7,
-      message: scenario.message || ""
+      message: scenario.message || "",
+      title: scenario.title || ""
     });
     
     // Store the session_id to use when creating the new scenario
@@ -788,8 +791,11 @@ export function Teams() {
   }
 
   const handleProceed = () => {
-    if (!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1) {
-      showToast.error("Please fill in all required fields including dealline");
+    if (!scenarioData.title.trim()) {
+      setTitleTouched(true);
+    }
+    if (!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1 || !scenarioData.title.trim()) {
+      showToast.error("Please fill in all required fields including title and deadline");
       return;
     }
     setScenarioStep(2);
@@ -835,8 +841,8 @@ export function Teams() {
   };
 
   const handleAssignScenario = async () => {
-    if (!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1) {
-      showToast.error("Please fill in all required fields including deadline");
+    if (!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1 || !scenarioData.title.trim()) {
+      showToast.error("Please fill in all required fields including title and deadline");
       return;
     }
 
@@ -916,6 +922,7 @@ export function Teams() {
           const scenarioPayload = {
             session_id: sessionIdToUse,
             manager_id: user.user_id.toString(),
+            title: scenarioData.title.trim(),
             time_limit_days: scenarioData.timeLimit,
             message: scenarioData.message?.trim() || ""
           };
@@ -950,7 +957,8 @@ export function Teams() {
 
       // Reset and close dialog only if all succeeded
       if (failedMembers.length === 0) {
-        setScenarioData({ mode: "", persona: "", description: "", timeLimit: 7, message: "" });
+        setScenarioData({ mode: "", persona: "", description: "", timeLimit: 7, message: "", title: "" });
+        setTitleTouched(false);
         setScenarioStep(1);
         setSelectedAdditionalMembers([]);
         setDocumentFile(null);
@@ -2216,28 +2224,33 @@ export function Teams() {
                                             <CardContent className="p-6">
                                               <div className="flex items-start justify-between gap-6">
                                                 <div className="flex-1 space-y-4">
-                                                  {/* Header Section - Status */}
-                                                  <div className="flex items-center justify-between gap-3">
-                                                    <Badge 
-                                                      variant="outline"
-                                                      className={`text-xs font-medium px-3 py-1.5 ${
-                                                        isPending 
-                                                          ? 'border-red-300 bg-red-50 text-red-700'
-                                                          : 'border-orange-400 bg-orange-100 text-orange-700'
-                                                      }`}
-                                                    >
-                                                      {isPending ? (
-                                                        <>
-                                                          <Clock className="h-3 w-3 mr-1.5" />
-                                                          Pending
-                                                        </>
-                                                      ) : (
-                                                        <>
-                                                          <AlertCircle className="h-3 w-3 mr-1.5" />
-                                                          Overdue
-                                                        </>
-                                                      )}
-                                                    </Badge>
+                                                  {/* Title Heading with Badge and Share/Delete Buttons */}
+                                                  <div className={`pb-3 border-b border-border/50 flex items-center justify-between gap-3`}>
+                                                    <div className="flex items-center gap-3">
+                                                      {scenario.title ? (
+                                                        <h3 className="text-xl font-bold text-black">{scenario.title}</h3>
+                                                      ) : null}
+                                                      <Badge 
+                                                        variant="outline"
+                                                        className={`text-xs font-medium px-3 py-1.5 shrink-0 ${
+                                                          isPending 
+                                                            ? 'border-red-300 bg-red-50 text-red-700'
+                                                            : 'border-orange-400 bg-orange-100 text-orange-700'
+                                                        }`}
+                                                      >
+                                                        {isPending ? (
+                                                          <>
+                                                            <Clock className="h-3 w-3 mr-1.5" />
+                                                            Pending
+                                                          </>
+                                                        ) : (
+                                                          <>
+                                                            <AlertCircle className="h-3 w-3 mr-1.5" />
+                                                            Overdue
+                                                          </>
+                                                        )}
+                                                      </Badge>
+                                                    </div>
                                                     <div className="flex items-center gap-2">
                                                       {scenario.session_id && (
                                                         <>
@@ -2265,7 +2278,7 @@ export function Teams() {
                                                   </div>
 
                                                   {/* Information Section */}
-                                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/50">
+                                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3">
                                                     <div className="flex items-start gap-3">
                                                       <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
                                                         <Calendar className="h-4 w-4 text-black/60" />
@@ -2417,14 +2430,20 @@ export function Teams() {
                                           <CardContent className="p-6">
                                             <div className="flex items-start justify-between gap-6">
                                               <div className="flex-1 space-y-4">
-                                                <div className="flex items-center justify-between gap-3">
-                                                  <Badge 
-                                                    variant="outline"
-                                                    className="text-xs font-medium px-3 py-1.5 border-green-300 bg-green-50 text-green-700"
-                                                  >
-                                                    <CheckCircle className="h-3 w-3 mr-1.5" />
-                                                    Completed
-                                                  </Badge>
+                                                {/* Title Heading with Badge and Share/Delete Buttons */}
+                                                <div className={`pb-3 border-b border-border/50 flex items-center justify-between gap-3`}>
+                                                  <div className="flex items-center gap-3">
+                                                    {scenario.title ? (
+                                                      <h3 className="text-xl font-bold text-black">{scenario.title}</h3>
+                                                    ) : null}
+                                                    <Badge 
+                                                      variant="outline"
+                                                      className="text-xs font-medium px-3 py-1.5 shrink-0 border-green-300 bg-green-50 text-green-700"
+                                                    >
+                                                      <CheckCircle className="h-3 w-3 mr-1.5" />
+                                                      Completed
+                                                    </Badge>
+                                                  </div>
                                                   <div className="flex items-center gap-2">
                                                     {scenario.session_id && (
                                                       <>
@@ -2450,7 +2469,7 @@ export function Teams() {
                                                     )}
                                                   </div>
                                                 </div>
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-border/50">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3">
                                                   <div className="flex items-start gap-3">
                                                     <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
                                                       <Calendar className="h-4 w-4 text-black/60" />
@@ -2961,7 +2980,8 @@ export function Teams() {
             setIsAssignScenarioDialogOpen(open);
             if (!open) {
               setSelectedMemberForScenario(null);
-              setScenarioData({ mode: "", persona: "", description: "", timeLimit: 7, message: "" });
+              setScenarioData({ mode: "", persona: "", description: "", timeLimit: 7, message: "", title: "" });
+              setTitleTouched(false);
               setScenarioStep(1);
               setSelectedAdditionalMembers([]);
               setDocumentFile(null);
@@ -2980,6 +3000,24 @@ export function Teams() {
               {scenarioStep === 1 ? (
                 // Step 1: Select mode, persona, and write scenario
                 <div className="space-y-6 py-2">
+                  <div className={`space-y-3 ${sharingSessionId ? "opacity-60 pointer-events-none" : ""}`}>
+                    <Label htmlFor="scenario-title" className="text-base font-semibold">
+                      Title <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="scenario-title"
+                      placeholder="Enter scenario title..."
+                      value={scenarioData.title}
+                      onChange={(e) => !sharingSessionId && setScenarioData(prev => ({ ...prev, title: e.target.value }))}
+                      onBlur={() => setTitleTouched(true)}
+                      disabled={!!sharingSessionId}
+                      className={`h-12 text-base ${!scenarioData.title.trim() && titleTouched ? "border-red-500" : ""}`}
+                    />
+                    {!scenarioData.title.trim() && titleTouched && (
+                      <p className="text-sm text-destructive">Title is required</p>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className={`space-y-3 ${sharingSessionId ? "opacity-60 pointer-events-none" : ""}`}>
                       <Label htmlFor="scenario-mode" className="text-base font-semibold">
@@ -3206,7 +3244,7 @@ export function Teams() {
                 <Button
                       className="w-full h-12 text-base font-semibold"
                       onClick={handleProceed}
-                      disabled={!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1}
+                      disabled={!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1 || !scenarioData.title.trim()}
                     >
                       Proceed
                     </Button>
@@ -3398,7 +3436,7 @@ export function Teams() {
                     <Button
                       className="flex-1 h-12 text-base font-semibold"
                       onClick={handleAssignScenario}
-                      disabled={isAssigningScenario}
+                      disabled={isAssigningScenario || !scenarioData.title.trim()}
                     >
                       {isAssigningScenario ? "Assigning Scenario..." : "Assign Scenario"}
                     </Button>
