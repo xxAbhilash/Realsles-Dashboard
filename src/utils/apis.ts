@@ -12,6 +12,7 @@ export const apis = {
   ,free_trial_requests: "/v1/free-trial-requests/" // Request a free trial
   ,my_trial_requests: "/v1/free-trial-requests/my-requests" // Check trial request status
   ,platform_feedback: "/v1/platform-feedback/" // Platform feedback endpoint
+  ,my_feedback: "/v1/platform-feedback/my-feedback" // Get my platform feedback
   ,sessions_manager_create: "/v1/sessions/manager-create" // Create session for manager
   ,scenarios: "/v1/scenarios/" // Create scenario
   ,scenarios_dashboard_manager: "/v1/scenarios/dashboard/manager" // Get scenario dashboard data for manager

@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   CreditCard,
   ClipboardList,
+  ThumbsUp,
 } from "lucide-react";
 import {
   Sidebar,
@@ -40,6 +41,7 @@ const salesRepItems = [
   { title: "Modes Used", url: "/modes", icon: Target },
   { title: "Personas Used", url: "/personas", icon: Users },
   { title: "Assigned Scenarios", url: "/assigned-scenarios", icon: ClipboardList },
+  { title: "My Feedback", url: "/my-feedback", icon: ThumbsUp },
 ];
 
 const getSalesManagerItems = (user: UserData) => {
@@ -52,7 +54,8 @@ const getSalesManagerItems = (user: UserData) => {
     { title: "Modes Used", url: "/modes", icon: Target },
     { title: "Personas Used", url: "/personas", icon: Users },
     { title: "Company", url: "/manager/company", icon: Building2 },
-    { title: "Teams", url: "/manager/teams", icon: Users }
+    { title: "Teams", url: "/manager/teams", icon: Users },
+    { title: "My Feedback", url: "/my-feedback", icon: ThumbsUp }
   ];
 
   return baseItems;
