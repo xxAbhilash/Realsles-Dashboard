@@ -2048,11 +2048,20 @@ export function Teams() {
                           const uniqueUsers = Object.keys(scenariosByUser).map(userId => {
                             const userScenarios = scenariosByUser[userId];
                             const firstScenario = userScenarios[0];
+                            
+                            // Calculate completed and pending/overdue counts
+                            const completedScenarios = userScenarios.filter((s: any) => s.is_completed);
+                            const pendingScenarios = userScenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) > 0);
+                            const lapsedScenarios = userScenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) === 0);
+                            const pendingOverdueCount = pendingScenarios.length + lapsedScenarios.length;
+                            
                             return {
                               userId,
                               user_name: firstScenario.user_name,
                               user_email: firstScenario.user_email,
                               scenarioCount: userScenarios.length,
+                              completedCount: completedScenarios.length,
+                              pendingOverdueCount: pendingOverdueCount,
                               scenarios: userScenarios
                             };
                           });
@@ -2088,18 +2097,27 @@ export function Teams() {
                                     </div>
                                   </div>
 
-                                  {/* Right Side - Scenario Count */}
-                                  <div className="flex flex-col items-end gap-2 sm:flex-shrink-0">
-                                    <div className="text-right">
-                                      <div className="flex items-center justify-end gap-1 mb-1">
-                                        <Target className="h-4 w-4 text-black/60" />
-                                        <p className="text-xs font-medium text-black/60">Scenarios Assigned</p>
-                                      </div>
+                                  {/* Right Side - Completed and Pending/Overdue Counts */}
+                                  <div className="flex flex-row items-center gap-4 sm:flex-shrink-0">
+                                    {/* Completed Scenarios */}
+                                    <div className="flex items-center gap-1.5">
+                                      {/* <CheckCircle className="h-4 w-4 text-green-600" /> */}
                                       <Badge 
                                         variant="outline" 
-                                        className="text-sm font-semibold border-yellow-300 bg-yellow-50 text-yellow-700 px-3 py-1"
+                                        className="text-sm font-semibold border-green-300 bg-green-50 text-green-700 px-3 py-1 whitespace-nowrap"
                                       >
-                                        {user.scenarioCount} {user.scenarioCount === 1 ? 'scenario' : 'scenarios'}
+                                        {user.completedCount} Completed
+                                      </Badge>
+                                    </div>
+                                    
+                                    {/* Pending/Overdue Scenarios */}
+                                    <div className="flex items-center gap-1.5">
+                                      {/* <Clock className="h-4 w-4 text-orange-600" /> */}
+                                      <Badge 
+                                        variant="outline" 
+                                        className="text-sm font-semibold border-orange-300 bg-orange-50 text-orange-700 px-3 py-1 whitespace-nowrap"
+                                      >
+                                        {user.pendingOverdueCount} Pending/Overdue
                                       </Badge>
                                     </div>
                                   </div>
