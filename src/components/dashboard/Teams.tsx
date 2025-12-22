@@ -740,20 +740,6 @@ export function Teams() {
   }
 
   const handleShareScenario = async (scenario: any) => {
-    // Pre-fill scenario data from the existing scenario
-    // Handle different possible field structures for mode and persona
-    const modeId = scenario.mode?.mode_id || scenario.mode?.id || scenario.mode_id || scenario.mode || "";
-    const personaId = scenario.persona?.persona_id || scenario.persona?.id || scenario.persona_id || scenario.persona || "";
-    
-    setScenarioData({
-      mode: modeId.toString(),
-      persona: personaId.toString(),
-      description: scenario.scenario || scenario.description || "",
-      timeLimit: scenario.time_limit_days || 7,
-      message: scenario.message || "",
-      title: scenario.title || ""
-    });
-    
     // Store the session_id to use when creating the new scenario
     setSharingSessionId(scenario.session_id);
     
@@ -765,28 +751,91 @@ export function Teams() {
     setDocumentSummary("");
     
     setIsAssignScenarioDialogOpen(true);
-    // Fetch modes and personas when dialog opens
-    await fetchModesAndPersonas();
+    
+    // Fetch modes and personas FIRST so we can look up IDs by name if needed
+    // Get the returned data directly to avoid React state timing issues
+    const { modes: fetchedModes, personas: fetchedPersonas } = await fetchModesAndPersonas();
     // Fetch all team members when sharing
     await getAllTeamMembers();
+    
+    // Now extract mode and persona IDs with proper fallback to name lookup
+    // Try direct ID extraction first
+    let modeId = scenario.mode?.mode_id || scenario.mode?.id || scenario.mode_id || "";
+    let personaId = scenario.persona?.persona_id || scenario.persona?.id || scenario.persona_id || "";
+    
+    // If mode ID is empty or not a valid ID, try to find it by name
+    if (!modeId) {
+      const modeName = scenario.mode?.name || scenario.mode_name || (typeof scenario.mode === 'string' ? scenario.mode : "");
+      if (modeName) {
+        // Look up mode by name in the freshly fetched modes data
+        const foundMode = fetchedModes.find((m: any) => 
+          m?.name?.toLowerCase() === modeName.toLowerCase() || 
+          m?.mode_name?.toLowerCase() === modeName.toLowerCase()
+        );
+        if (foundMode) {
+          modeId = foundMode?.mode_id || foundMode?.id || "";
+        }
+      }
+    }
+    
+    // If persona ID is empty or not a valid ID, try to find it by name
+    if (!personaId) {
+      const personaName = scenario.persona?.name || scenario.persona_name || (typeof scenario.persona === 'string' ? scenario.persona : "");
+      if (personaName) {
+        // Look up persona by name in the freshly fetched personas data
+        const foundPersona = fetchedPersonas.find((p: any) => 
+          p?.name?.toLowerCase() === personaName.toLowerCase() || 
+          p?.persona_name?.toLowerCase() === personaName.toLowerCase()
+        );
+        if (foundPersona) {
+          personaId = foundPersona?.persona_id || foundPersona?.id || "";
+        }
+      }
+    }
+    
+    // Pre-fill scenario data from the existing scenario
+    // Try multiple fields for description and provide a default if empty
+    const scenarioDescription = 
+      scenario.scenario || 
+      scenario.description || 
+      scenario.scenario_description ||
+      scenario.details ||
+      `Shared scenario from session ${scenario.session_id}`;
+    
+    // Extract title with fallback - for completed scenarios, title might be missing
+    const scenarioTitle = 
+      scenario.title || 
+      scenario.scenario_title ||
+      scenario.name ||
+      `Shared Scenario - ${new Date().toLocaleDateString()}`;
+    
+    setScenarioData({
+      mode: modeId.toString(),
+      persona: personaId.toString(),
+      description: scenarioDescription,
+      timeLimit: scenario.time_limit_days || 7,
+      message: scenario.message || "",
+      title: scenarioTitle
+    });
   }
 
-  const fetchModesAndPersonas = async () => {
+  const fetchModesAndPersonas = async (): Promise<{ modes: any[], personas: any[] }> => {
     try {
       // Fetch modes
       const modes = await Get(apis.interaction_modes);
-      if (Array.isArray(modes)) {
-        setModesData(modes);
-      }
+      const modesResult = Array.isArray(modes) ? modes : [];
+      setModesData(modesResult);
 
       // Fetch personas
       const personas = await Get(apis.ai_personas);
-      if (Array.isArray(personas)) {
-        setPersonasData(personas);
-      }
+      const personasResult = Array.isArray(personas) ? personas : [];
+      setPersonasData(personasResult);
+      
+      return { modes: modesResult, personas: personasResult };
     } catch (error) {
       console.error("Error fetching modes and personas:", error);
       showToast.error("Failed to load modes and personas");
+      return { modes: [], personas: [] };
     }
   }
 
@@ -794,10 +843,28 @@ export function Teams() {
     if (!scenarioData.title.trim()) {
       setTitleTouched(true);
     }
-    if (!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1 || !scenarioData.title.trim()) {
-      showToast.error("Please fill in all required fields including title and deadline");
+    
+    // When sharing an existing scenario (sharingSessionId is set), be more lenient with validation
+    const isSharing = !!sharingSessionId;
+    
+    // Basic validation - mode, persona, and title are always required
+    if (!scenarioData.mode || !scenarioData.persona || !scenarioData.title.trim()) {
+      showToast.error("Please select mode, persona, and provide a title");
       return;
     }
+    
+    // Time limit validation
+    if (!scenarioData.timeLimit || scenarioData.timeLimit < 1) {
+      showToast.error("Please set a valid deadline (at least 1 day)");
+      return;
+    }
+    
+    // Description validation - required for new scenarios, but lenient for sharing
+    if (!isSharing && !scenarioData.description.trim()) {
+      showToast.error("Please provide a scenario description");
+      return;
+    }
+    
     setScenarioStep(2);
   }
 
@@ -3262,7 +3329,15 @@ export function Teams() {
                 <Button
                       className="w-full h-12 text-base font-semibold"
                       onClick={handleProceed}
-                      disabled={!scenarioData.mode || !scenarioData.persona || !scenarioData.description.trim() || !scenarioData.timeLimit || scenarioData.timeLimit < 1 || !scenarioData.title.trim()}
+                      disabled={
+                        !scenarioData.mode || 
+                        !scenarioData.persona || 
+                        !scenarioData.title.trim() ||
+                        !scenarioData.timeLimit || 
+                        scenarioData.timeLimit < 1 ||
+                        // Description is only required when NOT sharing an existing scenario
+                        (!sharingSessionId && !scenarioData.description.trim())
+                      }
                     >
                       Proceed
                     </Button>
