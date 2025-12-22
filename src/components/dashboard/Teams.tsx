@@ -2605,12 +2605,21 @@ export function Teams() {
                                                     </div>
                                                   </div>
                                                   <div className="flex items-start gap-3">
-                                                    <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
-                                                      <CheckCircle className="h-4 w-4 text-black/60" />
+                                                    <div className="p-2 rounded-lg bg-green-50/30 border border-green-200/50">
+                                                      <CheckCircle className="h-4 w-4 text-green-600" />
                                                     </div>
                                                     <div>
-                                                      <p className="text-xs font-medium text-black/50 mb-1">Status</p>
-                                                      <p className="text-sm font-semibold text-black">Completed</p>
+                                                      <p className="text-xs font-medium text-black/50 mb-1">Completed On</p>
+                                                      <p className="text-sm font-semibold text-black">
+                                                        {scenario.end_time 
+                                                          ? new Date(scenario.end_time).toLocaleDateString('en-US', { 
+                                                              weekday: 'short',
+                                                              month: 'short', 
+                                                              day: 'numeric',
+                                                              year: 'numeric'
+                                                            })
+                                                          : "N/A"}
+                                                      </p>
                                                     </div>
                                                   </div>
                                                 </div>
