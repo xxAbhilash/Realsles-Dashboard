@@ -226,6 +226,7 @@ export function Teams() {
   const [isRefreshingMembers, setIsRefreshingMembers] = useState(false);
   const [data, setData]: any = useState([]);
   const [isAssignScenarioDialogOpen, setIsAssignScenarioDialogOpen] = useState(false);
+  const [isLoadingShareScenario, setIsLoadingShareScenario] = useState(false);
   const [selectedMemberForScenario, setSelectedMemberForScenario] = useState<any>(null);
   const [scenarioData, setScenarioData] = useState({
     mode: "",
@@ -740,6 +741,9 @@ export function Teams() {
   }
 
   const handleShareScenario = async (scenario: any) => {
+    // Set loading state
+    setIsLoadingShareScenario(true);
+    
     // Store the session_id to use when creating the new scenario
     setSharingSessionId(scenario.session_id);
     
@@ -750,73 +754,82 @@ export function Teams() {
     setDocumentFile(null);
     setDocumentSummary("");
     
-    setIsAssignScenarioDialogOpen(true);
-    
-    // Fetch modes and personas FIRST so we can look up IDs by name if needed
-    // Get the returned data directly to avoid React state timing issues
-    const { modes: fetchedModes, personas: fetchedPersonas } = await fetchModesAndPersonas();
-    // Fetch all team members when sharing
-    await getAllTeamMembers();
-    
-    // Now extract mode and persona IDs with proper fallback to name lookup
-    // Try direct ID extraction first
-    let modeId = scenario.mode?.mode_id || scenario.mode?.id || scenario.mode_id || "";
-    let personaId = scenario.persona?.persona_id || scenario.persona?.id || scenario.persona_id || "";
-    
-    // If mode ID is empty or not a valid ID, try to find it by name
-    if (!modeId) {
-      const modeName = scenario.mode?.name || scenario.mode_name || (typeof scenario.mode === 'string' ? scenario.mode : "");
-      if (modeName) {
-        // Look up mode by name in the freshly fetched modes data
-        const foundMode = fetchedModes.find((m: any) => 
-          m?.name?.toLowerCase() === modeName.toLowerCase() || 
-          m?.mode_name?.toLowerCase() === modeName.toLowerCase()
-        );
-        if (foundMode) {
-          modeId = foundMode?.mode_id || foundMode?.id || "";
+    try {
+      // Fetch modes and personas FIRST so we can look up IDs by name if needed
+      // Get the returned data directly to avoid React state timing issues
+      const { modes: fetchedModes, personas: fetchedPersonas } = await fetchModesAndPersonas();
+      // Fetch all team members when sharing
+      await getAllTeamMembers();
+      
+      // Now extract mode and persona IDs with proper fallback to name lookup
+      // Try direct ID extraction first
+      let modeId = scenario.mode?.mode_id || scenario.mode?.id || scenario.mode_id || "";
+      let personaId = scenario.persona?.persona_id || scenario.persona?.id || scenario.persona_id || "";
+      
+      // If mode ID is empty or not a valid ID, try to find it by name
+      if (!modeId) {
+        const modeName = scenario.mode?.name || scenario.mode_name || (typeof scenario.mode === 'string' ? scenario.mode : "");
+        if (modeName) {
+          // Look up mode by name in the freshly fetched modes data
+          const foundMode = fetchedModes.find((m: any) => 
+            m?.name?.toLowerCase() === modeName.toLowerCase() || 
+            m?.mode_name?.toLowerCase() === modeName.toLowerCase()
+          );
+          if (foundMode) {
+            modeId = foundMode?.mode_id || foundMode?.id || "";
+          }
         }
       }
-    }
-    
-    // If persona ID is empty or not a valid ID, try to find it by name
-    if (!personaId) {
-      const personaName = scenario.persona?.name || scenario.persona_name || (typeof scenario.persona === 'string' ? scenario.persona : "");
-      if (personaName) {
-        // Look up persona by name in the freshly fetched personas data
-        const foundPersona = fetchedPersonas.find((p: any) => 
-          p?.name?.toLowerCase() === personaName.toLowerCase() || 
-          p?.persona_name?.toLowerCase() === personaName.toLowerCase()
-        );
-        if (foundPersona) {
-          personaId = foundPersona?.persona_id || foundPersona?.id || "";
+      
+      // If persona ID is empty or not a valid ID, try to find it by name
+      if (!personaId) {
+        const personaName = scenario.persona?.name || scenario.persona_name || (typeof scenario.persona === 'string' ? scenario.persona : "");
+        if (personaName) {
+          // Look up persona by name in the freshly fetched personas data
+          const foundPersona = fetchedPersonas.find((p: any) => 
+            p?.name?.toLowerCase() === personaName.toLowerCase() || 
+            p?.persona_name?.toLowerCase() === personaName.toLowerCase()
+          );
+          if (foundPersona) {
+            personaId = foundPersona?.persona_id || foundPersona?.id || "";
+          }
         }
       }
+      
+      // Pre-fill scenario data from the existing scenario
+      // Try multiple fields for description and provide a default if empty
+      const scenarioDescription = 
+        scenario.scenario || 
+        scenario.description || 
+        scenario.scenario_description ||
+        scenario.details ||
+        `Shared scenario from session ${scenario.session_id}`;
+      
+      // Extract title with fallback - for completed scenarios, title might be missing
+      const scenarioTitle = 
+        scenario.title || 
+        scenario.scenario_title ||
+        scenario.name ||
+        `Shared Scenario - ${new Date().toLocaleDateString()}`;
+      
+      // Set all scenario data before opening dialog
+      setScenarioData({
+        mode: modeId.toString(),
+        persona: personaId.toString(),
+        description: scenarioDescription,
+        timeLimit: scenario.time_limit_days || 7,
+        message: scenario.message || "",
+        title: scenarioTitle
+      });
+      
+      // Now open the dialog with all data ready
+      setIsAssignScenarioDialogOpen(true);
+    } catch (error) {
+      console.error("Error loading share scenario data:", error);
+      showToast.error("Failed to load scenario data. Please try again.");
+    } finally {
+      setIsLoadingShareScenario(false);
     }
-    
-    // Pre-fill scenario data from the existing scenario
-    // Try multiple fields for description and provide a default if empty
-    const scenarioDescription = 
-      scenario.scenario || 
-      scenario.description || 
-      scenario.scenario_description ||
-      scenario.details ||
-      `Shared scenario from session ${scenario.session_id}`;
-    
-    // Extract title with fallback - for completed scenarios, title might be missing
-    const scenarioTitle = 
-      scenario.title || 
-      scenario.scenario_title ||
-      scenario.name ||
-      `Shared Scenario - ${new Date().toLocaleDateString()}`;
-    
-    setScenarioData({
-      mode: modeId.toString(),
-      persona: personaId.toString(),
-      description: scenarioDescription,
-      timeLimit: scenario.time_limit_days || 7,
-      message: scenario.message || "",
-      title: scenarioTitle
-    });
   }
 
   const fetchModesAndPersonas = async (): Promise<{ modes: any[], personas: any[] }> => {
@@ -859,8 +872,8 @@ export function Teams() {
       return;
     }
     
-    // Description validation - required for new scenarios, but lenient for sharing
-    if (!isSharing && !scenarioData.description.trim()) {
+    // Description validation - always required
+    if (!scenarioData.description.trim()) {
       showToast.error("Please provide a scenario description");
       return;
     }
@@ -1185,6 +1198,38 @@ export function Teams() {
     }
   }
 
+  const getPersonaIdFromScenario = (scenario: any): string | null => {
+    // Try direct ID extraction first
+    let personaId = scenario.persona?.persona_id || scenario.persona?.id || scenario.persona_id || null;
+    
+    // If persona ID is empty or not a valid ID, try to find it by name
+    if (!personaId && personasData.length > 0) {
+      const personaName = scenario.persona?.name || scenario.persona_name || (typeof scenario.persona === 'string' ? scenario.persona : "");
+      if (personaName) {
+        // Look up persona by name in the personas data
+        const foundPersona = personasData.find((p: any) => 
+          p?.name?.toLowerCase() === personaName.toLowerCase() || 
+          p?.persona_name?.toLowerCase() === personaName.toLowerCase()
+        );
+        if (foundPersona) {
+          personaId = foundPersona?.persona_id || foundPersona?.id || null;
+        }
+      }
+    }
+    
+    return personaId;
+  }
+
+  const handlePersonaInfoClick = async (scenario: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const personaId = getPersonaIdFromScenario(scenario);
+    if (personaId) {
+      await fetchPersonaDetails(personaId);
+    } else {
+      showToast.error("Persona ID not found");
+    }
+  }
+
   const getScenarioDashboard = async () => {
     if (!selectedTeam?.company_team_id) {
       setScenarioDashboardData(null);
@@ -1199,6 +1244,18 @@ export function Teams() {
     setScenarioDashboardError(null);
     
     try {
+      // Load personas if not already loaded (needed for persona info button)
+      if (personasData.length === 0) {
+        try {
+          const personas = await Get(apis.ai_personas);
+          const personasResult = Array.isArray(personas) ? personas : [];
+          setPersonasData(personasResult);
+        } catch (personaError) {
+          console.error("Error fetching personas:", personaError);
+          // Don't fail the whole operation if personas fail to load
+        }
+      }
+
       // GET request with team_id as query parameter
       const response = await Get(`${apis.scenarios_dashboard_manager}?team_id=${selectedTeam.company_team_id}`);
       
@@ -2345,8 +2402,13 @@ export function Teams() {
                                                             onClick={() => handleShareScenario(scenario)}
                                                             className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                                                             title="Share scenario"
+                                                            disabled={isLoadingShareScenario}
                                                           >
-                                                            <Share2 className="h-4 w-4" />
+                                                            {isLoadingShareScenario ? (
+                                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                              <Share2 className="h-4 w-4" />
+                                                            )}
                                                           </Button>
                                                           <Button
                                                             variant="ghost"
@@ -2406,8 +2468,21 @@ export function Teams() {
                                                       <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
                                                         <UserCircle className="h-4 w-4 text-black/60" />
                                                       </div>
-                                                      <div>
-                                                        <p className="text-xs font-medium text-black/50 mb-1">Persona</p>
+                                                      <div className="flex-1">
+                                                        <div className="flex items-center gap-1 mb-1">
+                                                          <p className="text-xs font-medium text-black/50">Persona</p>
+                                                          {getPersonaIdFromScenario(scenario) && (
+                                                            <Button
+                                                              variant="ghost"
+                                                              size="sm"
+                                                              onClick={(e) => handlePersonaInfoClick(scenario, e)}
+                                                              className="h-2 w-2 p-0 pt-[2px] pl-2 text-black/50 hover:text-black/80 hover:bg-transparent min-w-0"
+                                                              title="View persona details"
+                                                            >
+                                                              <Info className="h-1.5 w-1.5" />
+                                                            </Button>
+                                                          )}
+                                                        </div>
                                                         <p className="text-sm font-semibold text-black">
                                                           {scenario.persona?.name || scenario.persona_name || scenario.persona || "N/A"}
                                                         </p>
@@ -2538,8 +2613,13 @@ export function Teams() {
                                                           onClick={() => handleShareScenario(scenario)}
                                                           className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                                                           title="Share scenario"
+                                                          disabled={isLoadingShareScenario}
                                                         >
-                                                          <Share2 className="h-4 w-4" />
+                                                          {isLoadingShareScenario ? (
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                          ) : (
+                                                            <Share2 className="h-4 w-4" />
+                                                          )}
                                                         </Button>
                                                         <Button
                                                           variant="ghost"
@@ -2597,8 +2677,21 @@ export function Teams() {
                                                     <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
                                                       <UserCircle className="h-4 w-4 text-black/60" />
                                                     </div>
-                                                    <div>
-                                                      <p className="text-xs font-medium text-black/50 mb-1">Persona</p>
+                                                    <div className="flex-1">
+                                                      <div className="flex items-center gap-1 mb-1">
+                                                        <p className="text-xs font-medium text-black/50">Persona</p>
+                                                        {getPersonaIdFromScenario(scenario) && (
+                                                          <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={(e) => handlePersonaInfoClick(scenario, e)}
+                                                            className="h-2 w-2 p-0 text-black hover:text-black/80 hover:bg-transparent min-w-0"
+                                                            title="View persona details"
+                                                          >
+                                                            <Info className="h-1.5 w-1.5" />
+                                                          </Button>
+                                                        )}
+                                                      </div>
                                                       <p className="text-sm font-semibold text-black">
                                                         {scenario.persona?.name || scenario.persona_name || scenario.persona || "N/A"}
                                                       </p>
@@ -3082,6 +3175,7 @@ export function Teams() {
               setDocumentSummary("");
               setIsUploadingDocument(false);
               setSharingSessionId(null); // Reset sharing session ID when dialog closes
+              setIsLoadingShareScenario(false); // Reset loading state
             }
           }}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -3094,7 +3188,7 @@ export function Teams() {
               {scenarioStep === 1 ? (
                 // Step 1: Select mode, persona, and write scenario
                 <div className="space-y-6 py-2">
-                  <div className={`space-y-3 ${sharingSessionId ? "opacity-60 pointer-events-none" : ""}`}>
+                  <div className="space-y-3">
                     <Label htmlFor="scenario-title" className="text-base font-semibold">
                       Title <span className="text-destructive">*</span>
                     </Label>
@@ -3102,9 +3196,8 @@ export function Teams() {
                       id="scenario-title"
                       placeholder="Enter scenario title..."
                       value={scenarioData.title}
-                      onChange={(e) => !sharingSessionId && setScenarioData(prev => ({ ...prev, title: e.target.value }))}
+                      onChange={(e) => setScenarioData(prev => ({ ...prev, title: e.target.value }))}
                       onBlur={() => setTitleTouched(true)}
-                      disabled={!!sharingSessionId}
                       className={`h-12 text-base ${!scenarioData.title.trim() && titleTouched ? "border-red-500" : ""}`}
                     />
                     {!scenarioData.title.trim() && titleTouched && (
@@ -3113,14 +3206,13 @@ export function Teams() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className={`space-y-3 ${sharingSessionId ? "opacity-60 pointer-events-none" : ""}`}>
+                    <div className="space-y-3">
                       <Label htmlFor="scenario-mode" className="text-base font-semibold">
                         Mode <span className="text-destructive">*</span>
                       </Label>
                   <Select
                     value={scenarioData.mode}
-                        onValueChange={(value) => !sharingSessionId && setScenarioData(prev => ({ ...prev, mode: value }))}
-                        disabled={!!sharingSessionId}
+                        onValueChange={(value) => setScenarioData(prev => ({ ...prev, mode: value }))}
                   >
                         <SelectTrigger 
                           id="scenario-mode" 
@@ -3151,14 +3243,13 @@ export function Teams() {
                       )}
                 </div>
 
-                    <div className={`space-y-3 ${sharingSessionId ? "opacity-60 pointer-events-none" : ""}`}>
+                    <div className="space-y-3">
                       <Label htmlFor="scenario-persona" className="text-base font-semibold">
                         Persona <span className="text-destructive">*</span>
                       </Label>
                   <Select
                     value={scenarioData.persona}
-                        onValueChange={(value) => !sharingSessionId && setScenarioData(prev => ({ ...prev, persona: value }))}
-                        disabled={!!sharingSessionId}
+                        onValueChange={(value) => setScenarioData(prev => ({ ...prev, persona: value }))}
                   >
                         <SelectTrigger 
                           id="scenario-persona" 
@@ -3228,7 +3319,7 @@ export function Teams() {
                   </div>
 
                   {/* Document Upload Section */}
-                  <div className={`space-y-3 ${sharingSessionId ? "opacity-60 pointer-events-none" : ""}`}>
+                  <div className="space-y-3">
                     <Label htmlFor="document-upload" className="text-base font-semibold">
                       Upload Document (Optional)
                     </Label>
@@ -3247,7 +3338,7 @@ export function Teams() {
                               type="button"
                               variant="outline"
                               className="cursor-pointer"
-                              disabled={isUploadingDocument || !!sharingSessionId}
+                              disabled={isUploadingDocument}
                               asChild
                             >
                               <span>
@@ -3271,7 +3362,7 @@ export function Teams() {
                             accept=".pdf,.doc,.docx"
                             onChange={handleFileChange}
                             className="hidden"
-                            disabled={isUploadingDocument || !!sharingSessionId}
+                            disabled={isUploadingDocument}
                           />
                         </div>
                       ) : (
@@ -3294,17 +3385,15 @@ export function Teams() {
                                 </p>
                               </div>
                             </div>
-                            {!sharingSessionId && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={handleRemoveDocument}
-                                disabled={isUploadingDocument}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            )}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleRemoveDocument}
+                              disabled={isUploadingDocument}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
                           </div>
                           {isUploadingDocument && (
                             <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground">
@@ -3317,7 +3406,7 @@ export function Teams() {
                     </div>
                   </div>
 
-                  <div className={`space-y-3 ${sharingSessionId ? "opacity-60" : ""}`}>
+                  <div className="space-y-3">
                     <Label htmlFor="scenario-description" className="text-base font-semibold">
                       Scenario <span className="text-destructive">*</span>
                     </Label>
@@ -3325,8 +3414,7 @@ export function Teams() {
                       id="scenario-description"
                       placeholder="Write your scenario description here..."
                       value={scenarioData.description}
-                      onChange={(e) => !sharingSessionId && setScenarioData(prev => ({ ...prev, description: e.target.value }))}
-                      disabled={!!sharingSessionId}
+                      onChange={(e) => setScenarioData(prev => ({ ...prev, description: e.target.value }))}
                       className={`min-h-[200px] text-base resize-none ${!scenarioData.description.trim() ? "border-red-500" : ""}`}
                     />
                     <p className="text-sm text-muted-foreground">
@@ -3344,8 +3432,7 @@ export function Teams() {
                         !scenarioData.title.trim() ||
                         !scenarioData.timeLimit || 
                         scenarioData.timeLimit < 1 ||
-                        // Description is only required when NOT sharing an existing scenario
-                        (!sharingSessionId && !scenarioData.description.trim())
+                        !scenarioData.description.trim()
                       }
                     >
                       Proceed
@@ -3550,60 +3637,60 @@ export function Teams() {
 
           {/* Persona Details Dialog */}
           <Dialog open={isPersonaDetailsOpen} onOpenChange={setIsPersonaDetailsOpen}>
-            <DialogContent className="max-w-5xl max-h-[92vh] overflow-hidden p-0 border border-border shadow-2xl bg-background">
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden p-0 border border-border shadow-2xl bg-background">
               {/* Header */}
-              <div className="sticky top-0 z-10 border-b border-border bg-background px-6 py-5">
+              <div className="sticky top-0 z-10 border-b border-border bg-background px-4 py-3">
                 <DialogHeader className="pb-0">
-                  <DialogTitle className="text-2xl font-semibold tracking-tight flex items-center gap-2.5">
-                    <div className="p-1.5 rounded-lg bg-yellow-100">
-                      <Sparkles className="h-4 w-4 text-black" />
+                  <DialogTitle className="text-lg font-semibold tracking-tight flex items-center gap-2">
+                    <div className="p-1 rounded-lg bg-yellow-100">
+                      <Sparkles className="h-3.5 w-3.5 text-black" />
                     </div>
                     <span className="text-black">Persona Profile</span>
                   </DialogTitle>
               </DialogHeader>
               </div>
 
-              <div className="overflow-y-auto max-h-[calc(92vh-80px)] px-6 py-6 bg-background">
+              <div className="overflow-y-auto max-h-[calc(85vh-60px)] px-4 py-4 bg-background">
               {loadingPersonaDetails ? (
-                  <div className="flex items-center justify-center py-20">
-                    <div className="flex flex-col items-center gap-4">
+                  <div className="flex items-center justify-center py-12">
+                    <div className="flex flex-col items-center gap-3">
                       <div className="relative">
-                        <div className="animate-spin rounded-full h-10 w-10 border-2 border-yellow-200"></div>
-                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-black absolute top-0 left-0"></div>
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-yellow-200"></div>
+                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-black absolute top-0 left-0"></div>
                       </div>
                       <div className="text-sm font-medium text-black/70 animate-pulse">Loading persona details...</div>
                     </div>
                 </div>
               ) : selectedPersonaDetails ? (
-                  <div className="space-y-8 animate-in fade-in-50 duration-500">
+                  <div className="space-y-4 animate-in fade-in-50 duration-500">
                     {/* Profile Header Section */}
                     <div className="relative group">
-                      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-yellow-100 to-yellow-50 border border-yellow-200 shadow-lg p-8">
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                      <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-yellow-100 to-yellow-50 border border-yellow-200 shadow-sm p-4">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
                           <div className="relative group/avatar flex-shrink-0">
-                            <Avatar className="relative h-28 w-28 border-4 border-yellow-50 shadow-xl ring-2 ring-yellow-200">
+                            <Avatar className="relative h-16 w-16 border-2 border-yellow-50 shadow-md ring-1 ring-yellow-200">
                               <AvatarImage 
                                 src={selectedPersonaDetails?.profile_pic} 
                                 alt={selectedPersonaDetails?.name}
                                 className="object-cover"
                               />
-                              <AvatarFallback className="text-3xl font-bold bg-gradient-to-br from-yellow-600 to-yellow-700 text-white">
+                              <AvatarFallback className="text-lg font-bold bg-gradient-to-br from-yellow-600 to-yellow-700 text-white">
                         {selectedPersonaDetails?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                            <div className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-black border-[3px] border-yellow-50 flex items-center justify-center shadow-lg ring-2 ring-yellow-200">
-                              <User className="h-3.5 w-3.5 text-white" />
+                            <div className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full bg-black border-2 border-yellow-50 flex items-center justify-center shadow-md ring-1 ring-yellow-200">
+                              <User className="h-2.5 w-2.5 text-white" />
                             </div>
                           </div>
-                          <div className="flex-1 pt-1 min-w-0">
-                            <h3 className="text-3xl font-bold tracking-tight mb-3 text-black break-words">
+                          <div className="flex-1 pt-0.5 min-w-0">
+                            <h3 className="text-xl font-bold tracking-tight mb-2 text-black break-words">
                               {formatText(selectedPersonaDetails?.name)}
                             </h3>
-                            <div className="flex items-center gap-2.5 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap">
                               {selectedPersonaDetails?.gender && (
                                 <Badge 
                                   variant="secondary" 
-                                  className="px-3 py-1.5 text-xs font-medium bg-yellow-100 text-black border-yellow-200 hover:bg-yellow-200 transition-all duration-200 hover:scale-105"
+                                  className="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-black border-yellow-200"
                                 >
                                   {formatText(selectedPersonaDetails?.gender)}
                       </Badge>
@@ -3611,9 +3698,9 @@ export function Teams() {
                               {selectedPersonaDetails?.ai_role && (
                                 <Badge 
                                   variant="outline" 
-                                  className="px-3 py-1.5 text-xs font-medium border-yellow-300 bg-yellow-50 hover:bg-yellow-100 transition-all duration-200 hover:scale-105"
+                                  className="px-2 py-0.5 text-xs font-medium border-yellow-300 bg-yellow-50"
                                 >
-                                  <Briefcase className="h-3 w-3 mr-1.5 text-black" />
+                                  <Briefcase className="h-2.5 w-2.5 mr-1 text-black" />
                                   <span className="break-words text-black">{formatText(selectedPersonaDetails?.ai_role?.name)}</span>
                                 </Badge>
                               )}
@@ -3624,19 +3711,18 @@ export function Teams() {
                   </div>
 
                     {/* Details Grid with modern cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                     {/* Industry */}
                     {selectedPersonaDetails?.industry && (
-                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
-                          <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                          <CardContent className="relative p-5">
-                            <div className="flex items-start gap-4">
-                              <div className="p-2.5 rounded-xl bg-yellow-100 group-hover:bg-yellow-200 transition-all duration-300 shadow-sm flex-shrink-0">
-                                <Factory className="h-5 w-5 text-black" />
+                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 transition-all duration-200">
+                          <CardContent className="relative p-3">
+                            <div className="flex items-start gap-2.5">
+                              <div className="p-1.5 rounded-lg bg-yellow-100 flex-shrink-0">
+                                <Factory className="h-4 w-4 text-black" />
                       </div>
                               <div className="flex-1 min-w-0 pt-0.5">
-                                <p className="text-[10px] font-semibold text-black/60 uppercase tracking-wider mb-2">Industry</p>
-                                <p className="font-semibold text-base leading-snug text-black break-words">{formatText(selectedPersonaDetails?.industry?.name)}</p>
+                                <p className="text-[9px] font-semibold text-black/60 uppercase tracking-wider mb-1">Industry</p>
+                                <p className="font-semibold text-sm leading-snug text-black break-words">{formatText(selectedPersonaDetails?.industry?.name)}</p>
                       </div>
                             </div>
                           </CardContent>
@@ -3645,16 +3731,15 @@ export function Teams() {
 
                     {/* Geography */}
                     {selectedPersonaDetails?.geography && (
-                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
-                          <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                          <CardContent className="relative p-5">
-                            <div className="flex items-start gap-4">
-                              <div className="p-2.5 rounded-xl bg-yellow-100 group-hover:bg-yellow-200 transition-all duration-300 shadow-sm flex-shrink-0">
-                                <MapPin className="h-5 w-5 text-black" />
+                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 transition-all duration-200">
+                          <CardContent className="relative p-3">
+                            <div className="flex items-start gap-2.5">
+                              <div className="p-1.5 rounded-lg bg-yellow-100 flex-shrink-0">
+                                <MapPin className="h-4 w-4 text-black" />
                       </div>
                               <div className="flex-1 min-w-0 pt-0.5">
-                                <p className="text-[10px] font-semibold text-black/60 uppercase tracking-wider mb-2">Geography</p>
-                                <p className="font-semibold text-base leading-snug text-black break-words">{formatText(selectedPersonaDetails?.geography)}</p>
+                                <p className="text-[9px] font-semibold text-black/60 uppercase tracking-wider mb-1">Geography</p>
+                                <p className="font-semibold text-sm leading-snug text-black break-words">{formatText(selectedPersonaDetails?.geography)}</p>
                               </div>
                             </div>
                           </CardContent>
@@ -3663,16 +3748,15 @@ export function Teams() {
 
                     {/* Plant Size Impact */}
                     {selectedPersonaDetails?.plant_size_impact && (
-                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
-                          <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                          <CardContent className="relative p-5">
-                            <div className="flex items-start gap-4">
-                              <div className="p-2.5 rounded-xl bg-yellow-100 group-hover:bg-yellow-200 transition-all duration-300 shadow-sm flex-shrink-0">
-                                <Building2 className="h-5 w-5 text-black" />
+                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 transition-all duration-200">
+                          <CardContent className="relative p-3">
+                            <div className="flex items-start gap-2.5">
+                              <div className="p-1.5 rounded-lg bg-yellow-100 flex-shrink-0">
+                                <Building2 className="h-4 w-4 text-black" />
                       </div>
                               <div className="flex-1 min-w-0 pt-0.5">
-                                <p className="text-[10px] font-semibold text-black/60 uppercase tracking-wider mb-2">Plant Size</p>
-                                <p className="font-semibold text-base leading-snug text-black break-words">{formatText(selectedPersonaDetails?.plant_size_impact?.name)}</p>
+                                <p className="text-[9px] font-semibold text-black/60 uppercase tracking-wider mb-1">Plant Size</p>
+                                <p className="font-semibold text-sm leading-snug text-black break-words">{formatText(selectedPersonaDetails?.plant_size_impact?.name)}</p>
                               </div>
                             </div>
                           </CardContent>
@@ -3681,16 +3765,15 @@ export function Teams() {
 
                     {/* Manufacturing Model */}
                     {selectedPersonaDetails?.manufacturing_model && (
-                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
-                          <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                          <CardContent className="relative p-5">
-                            <div className="flex items-start gap-4">
-                              <div className="p-2.5 rounded-xl bg-yellow-100 group-hover:bg-yellow-200 transition-all duration-300 shadow-sm flex-shrink-0">
-                                <Factory className="h-5 w-5 text-black" />
+                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 transition-all duration-200">
+                          <CardContent className="relative p-3">
+                            <div className="flex items-start gap-2.5">
+                              <div className="p-1.5 rounded-lg bg-yellow-100 flex-shrink-0">
+                                <Factory className="h-4 w-4 text-black" />
                       </div>
                               <div className="flex-1 min-w-0 pt-0.5">
-                                <p className="text-[10px] font-semibold text-black/60 uppercase tracking-wider mb-2">Manufacturing Model</p>
-                                <p className="font-semibold text-base leading-snug text-black break-words">{formatText(selectedPersonaDetails?.manufacturing_model?.name)}</p>
+                                <p className="text-[9px] font-semibold text-black/60 uppercase tracking-wider mb-1">Manufacturing Model</p>
+                                <p className="font-semibold text-sm leading-snug text-black break-words">{formatText(selectedPersonaDetails?.manufacturing_model?.name)}</p>
                               </div>
                             </div>
                           </CardContent>
@@ -3699,16 +3782,15 @@ export function Teams() {
 
                     {/* Company Size */}
                     {selectedPersonaDetails?.company_size_new && (
-                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
-                          <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                          <CardContent className="relative p-5">
-                            <div className="flex items-start gap-4">
-                              <div className="p-2.5 rounded-xl bg-yellow-100 group-hover:bg-yellow-200 transition-all duration-300 shadow-sm flex-shrink-0">
-                                <Building className="h-5 w-5 text-black" />
+                        <Card className="group relative overflow-hidden border border-yellow-200 bg-yellow-50 hover:border-yellow-300 transition-all duration-200">
+                          <CardContent className="relative p-3">
+                            <div className="flex items-start gap-2.5">
+                              <div className="p-1.5 rounded-lg bg-yellow-100 flex-shrink-0">
+                                <Building className="h-4 w-4 text-black" />
                       </div>
                               <div className="flex-1 min-w-0 pt-0.5">
-                                <p className="text-[10px] font-semibold text-black/60 uppercase tracking-wider mb-2">Company Size</p>
-                                <p className="font-semibold text-base leading-snug text-black break-words">{formatText(selectedPersonaDetails?.company_size_new?.name)}</p>
+                                <p className="text-[9px] font-semibold text-black/60 uppercase tracking-wider mb-1">Company Size</p>
+                                <p className="font-semibold text-sm leading-snug text-black break-words">{formatText(selectedPersonaDetails?.company_size_new?.name)}</p>
                               </div>
                             </div>
                           </CardContent>
@@ -3718,23 +3800,22 @@ export function Teams() {
 
                     {/* Products Section */}
                   {selectedPersonaDetails?.persona_products && selectedPersonaDetails?.persona_products?.length > 0 && (
-                      <Card className="relative overflow-hidden border border-yellow-200 bg-yellow-50 shadow-lg">
-                        <div className="absolute inset-0 bg-gradient-to-br from-yellow-100/30 via-transparent to-transparent opacity-50"></div>
-                        <CardHeader className="relative pb-4 border-b border-yellow-200">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2.5 rounded-xl bg-yellow-100 shadow-sm">
-                              <Package className="h-5 w-5 text-black" />
+                      <Card className="relative overflow-hidden border border-yellow-200 bg-yellow-50 shadow-sm">
+                        <CardHeader className="relative pb-2 border-b border-yellow-200">
+                          <div className="flex items-center gap-2">
+                            <div className="p-1.5 rounded-lg bg-yellow-100">
+                              <Package className="h-4 w-4 text-black" />
                             </div>
-                            <CardTitle className="text-lg font-semibold tracking-tight text-black">Associated Products</CardTitle>
+                            <CardTitle className="text-sm font-semibold tracking-tight text-black">Associated Products</CardTitle>
                           </div>
                         </CardHeader>
-                        <CardContent className="relative pt-6">
-                          <div className="flex flex-wrap gap-2.5">
+                        <CardContent className="relative pt-3">
+                          <div className="flex flex-wrap gap-2">
                         {selectedPersonaDetails?.persona_products?.map((personaProduct: any, index: number) => (
                               <Badge 
                                 key={index} 
                                 variant="secondary" 
-                                className="px-4 py-2 text-sm font-medium bg-yellow-100 text-black border-yellow-200 hover:bg-yellow-200 hover:shadow-md transition-all duration-200 hover:scale-105 cursor-default break-words"
+                                className="px-2 py-1 text-xs font-medium bg-yellow-100 text-black border-yellow-200 cursor-default break-words"
                               >
                                 {formatText(personaProduct?.product?.name)}
                           </Badge>
@@ -3745,14 +3826,14 @@ export function Teams() {
                   )}
                 </div>
               ) : (
-                  <div className="text-center py-20">
-                    <div className="flex flex-col items-center gap-4 animate-in fade-in-50 duration-500">
-                      <div className="p-4 rounded-2xl bg-yellow-100">
-                        <Info className="h-8 w-8 text-black/60" />
+                  <div className="text-center py-12">
+                    <div className="flex flex-col items-center gap-3 animate-in fade-in-50 duration-500">
+                      <div className="p-3 rounded-lg bg-yellow-100">
+                        <Info className="h-6 w-6 text-black/60" />
                       </div>
                       <div>
-                        <p className="text-base font-medium text-black mb-1">No persona details available</p>
-                        <p className="text-sm text-black/70">Please try again later</p>
+                        <p className="text-sm font-medium text-black mb-1">No persona details available</p>
+                        <p className="text-xs text-black/70">Please try again later</p>
                       </div>
                     </div>
                 </div>
