@@ -227,6 +227,7 @@ export function Teams() {
   const [data, setData]: any = useState([]);
   const [isAssignScenarioDialogOpen, setIsAssignScenarioDialogOpen] = useState(false);
   const [isLoadingShareScenario, setIsLoadingShareScenario] = useState(false);
+  const [sharingSessionIdState, setSharingSessionIdState] = useState<string | number | null>(null);
   const [selectedMemberForScenario, setSelectedMemberForScenario] = useState<any>(null);
   const [scenarioData, setScenarioData] = useState({
     mode: "",
@@ -263,6 +264,15 @@ export function Teams() {
   const [performanceData, setPerformanceData] = useState<any>(null);
   const [performanceLoading, setPerformanceLoading] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | number | null>(null);
+  const [userModePerformanceData, setUserModePerformanceData] = useState<Record<string, any>>({});
+  const [isLoadingUserGraph, setIsLoadingUserGraph] = useState(false);
+  const [scenariosViewMode, setScenariosViewMode] = useState<'by-users' | 'by-scenarios'>('by-users');
+  const [scenariosByScenarioData, setScenariosByScenarioData] = useState<any[]>([]);
+  const [loadingScenariosByScenario, setLoadingScenariosByScenario] = useState(false);
+  const [isScenarioUsersDialogOpen, setIsScenarioUsersDialogOpen] = useState(false);
+  const [selectedScenarioDetails, setSelectedScenarioDetails] = useState<any>(null);
+  const [isScenarioPendingOverdueOpen, setIsScenarioPendingOverdueOpen] = useState(true);
+  const [isScenarioCompletedOpen, setIsScenarioCompletedOpen] = useState(false);
 
   console.log(teamMembers, data, "teamMembers__")
   // Add state for selected mode
@@ -453,6 +463,44 @@ export function Teams() {
       console.log(error, "_error_fetching_modes")
     }
   }
+
+  // Fetch user performance data across all modes for the individual user graph
+  const fetchUserModePerformance = async () => {
+    if (!selectedTeam?.company_team_id || !selectMember || Object.keys(modeIds).length === 0) {
+      setUserModePerformanceData({});
+      return;
+    }
+    
+    setIsLoadingUserGraph(true);
+    try {
+      const modePromises = Object.entries(modeIds).map(async ([modeName, modeId]) => {
+        const data = await Get(`${company_teams}${selectedTeam?.company_team_id}/mode/${modeId}/members-performance?months_back=6`);
+        return { modeName, data };
+      });
+      
+      const results = await Promise.all(modePromises);
+      
+      const userDataByMode: Record<string, any> = {};
+      results.forEach(({ modeName, data }) => {
+        if (data?.members && Array.isArray(data.members)) {
+          // Find the selected user's data in this mode
+          const userMemberData = data.members.find((member: any) => 
+            member.member_id === selectMember || 
+            String(member.member_id) === String(selectMember)
+          );
+          if (userMemberData) {
+            userDataByMode[modeName] = userMemberData;
+          }
+        }
+      });
+      
+      setUserModePerformanceData(userDataByMode);
+    } catch (error) {
+      console.log(error, "_error_fetching_user_mode_performance");
+    } finally {
+      setIsLoadingUserGraph(false);
+    }
+  };
 
   console.log(teamMembersGraph, "teamMembersGraph")
 
@@ -741,8 +789,9 @@ export function Teams() {
   }
 
   const handleShareScenario = async (scenario: any) => {
-    // Set loading state
+    // Set loading state for this specific scenario
     setIsLoadingShareScenario(true);
+    setSharingSessionIdState(scenario.session_id);
     
     // Store the session_id to use when creating the new scenario
     setSharingSessionId(scenario.session_id);
@@ -798,7 +847,9 @@ export function Teams() {
       
       // Pre-fill scenario data from the existing scenario
       // Try multiple fields for description and provide a default if empty
+      // Priority: scenario_text (for By Scenarios view) > scenario > description > scenario_description > details
       const scenarioDescription = 
+        scenario.scenario_text ||
         scenario.scenario || 
         scenario.description || 
         scenario.scenario_description ||
@@ -812,13 +863,16 @@ export function Teams() {
         scenario.name ||
         `Shared Scenario - ${new Date().toLocaleDateString()}`;
       
+      // Extract message (manager message) - for By Scenarios view
+      const managerMessage = scenario.message || "";
+      
       // Set all scenario data before opening dialog
       setScenarioData({
         mode: modeId.toString(),
         persona: personaId.toString(),
         description: scenarioDescription,
         timeLimit: scenario.time_limit_days || 7,
-        message: scenario.message || "",
+        message: managerMessage,
         title: scenarioTitle
       });
       
@@ -827,6 +881,7 @@ export function Teams() {
     } catch (error) {
       console.error("Error loading share scenario data:", error);
       showToast.error("Failed to load scenario data. Please try again.");
+      setSharingSessionIdState(null);
     } finally {
       setIsLoadingShareScenario(false);
     }
@@ -1033,6 +1088,10 @@ export function Teams() {
       // This ensures the dashboard reflects the current state even if some assignments failed
       if (selectedTeam?.company_team_id && successMembers.length > 0) {
         await getScenarioDashboard();
+        // Also refresh scenarios by scenario view if currently in that mode
+        if (scenariosViewMode === 'by-scenarios') {
+          await getScenariosByScenario();
+        }
       }
 
       // Reset and close dialog only if all succeeded
@@ -1047,6 +1106,7 @@ export function Teams() {
         setIsAssignScenarioDialogOpen(false);
         setSelectedMemberForScenario(null);
         setSharingSessionId(null); // Reset sharing session ID
+        setSharingSessionIdState(null); // Reset sharing session ID state
       }
     } catch (error) {
       console.error("Error assigning scenario:", error);
@@ -1275,6 +1335,45 @@ export function Teams() {
     }
   }
 
+  // Fetch scenarios grouped by scenario (not by user)
+  const getScenariosByScenario = async () => {
+    if (!selectedTeam?.company_team_id) {
+      setScenariosByScenarioData([]);
+      return;
+    }
+    
+    setLoadingScenariosByScenario(true);
+    try {
+      // Load personas if not already loaded (needed for persona info button)
+      if (personasData.length === 0) {
+        try {
+          const personas = await Get(apis.ai_personas);
+          const personasResult = Array.isArray(personas) ? personas : [];
+          setPersonasData(personasResult);
+        } catch (personaError) {
+          console.error("Error fetching personas:", personaError);
+          // Don't fail the whole operation if personas fail to load
+        }
+      }
+
+      const response = await Get(`${apis.scenarios_by_team}${selectedTeam.company_team_id}/scenarios`);
+      
+      if (response && Array.isArray(response)) {
+        setScenariosByScenarioData(response);
+      } else if (response) {
+        // If response is an object with a scenarios array
+        setScenariosByScenarioData(response.scenarios || []);
+      } else {
+        setScenariosByScenarioData([]);
+      }
+    } catch (error: any) {
+      console.error("Error fetching scenarios by scenario:", error);
+      setScenariosByScenarioData([]);
+    } finally {
+      setLoadingScenariosByScenario(false);
+    }
+  }
+
   const handleDeleteScenario = async () => {
     if (!deletingSessionId) return;
     try {
@@ -1282,10 +1381,37 @@ export function Teams() {
       showToast.success("Scenario deleted successfully!");
       // Refresh scenario dashboard and user scenarios
       await getScenarioDashboard();
+      // Refresh scenarios by scenario view if currently in that mode
+      if (scenariosViewMode === 'by-scenarios' && selectedTeam?.company_team_id) {
+        await getScenariosByScenario();
+      }
       // Update selected user scenarios if dialog is open
       if (isUserScenariosDialogOpen && selectedUserScenarios) {
         const updatedScenarios = selectedUserScenarios.filter((s: any) => s.session_id !== deletingSessionId);
         setSelectedUserScenarios(updatedScenarios);
+      }
+      // Update selected scenario details if dialog is open
+      if (isScenarioUsersDialogOpen && selectedScenarioDetails) {
+        // Check if the deleted session belongs to this scenario
+        const usersCompleted = selectedScenarioDetails.users_completed || [];
+        const usersPending = selectedScenarioDetails.users_pending || [];
+        const usersOverdue = selectedScenarioDetails.users_overdue || [];
+        const allUsers = [...usersCompleted, ...usersPending, ...usersOverdue];
+        const hasDeletedSession = allUsers.some((u: any) => u.session_id === deletingSessionId);
+        
+        if (hasDeletedSession) {
+          // Refetch the scenario details
+          if (selectedTeam?.company_team_id) {
+            await getScenariosByScenario();
+            // Find the updated scenario and update selectedScenarioDetails
+            const response = await Get(`${apis.scenarios_by_team}${selectedTeam.company_team_id}/scenarios`);
+            const scenarios = response?.scenarios || response || [];
+            const updatedScenario = scenarios.find((s: any) => s.scenario_id === selectedScenarioDetails.scenario_id);
+            if (updatedScenario) {
+              setSelectedScenarioDetails(updatedScenario);
+            }
+          }
+        }
       }
       setIsDeleteScenarioDialogOpen(false);
       setDeletingSessionId(null);
@@ -1341,9 +1467,25 @@ export function Teams() {
     }
   }, [selectedTeam?.company_team_id])
 
+  // Fetch scenarios by scenario when toggle is switched or team changes
+  useEffect(() => {
+    if (selectedTeam?.company_team_id && scenariosViewMode === 'by-scenarios') {
+      getScenariosByScenario();
+    }
+  }, [selectedTeam?.company_team_id, scenariosViewMode])
+
   useEffect(() => {
     fetchInteractionModes();
   }, [])
+
+  // Fetch user mode performance data when a member is selected
+  useEffect(() => {
+    if (selectMember && Object.keys(modeIds).length > 0) {
+      fetchUserModePerformance();
+    } else {
+      setUserModePerformanceData({});
+    }
+  }, [selectMember, selectedTeam?.company_team_id, modeIds])
 
   // Open pending/overdue scenarios by default when there are pending or overdue scenarios
   useEffect(() => {
@@ -1472,6 +1614,68 @@ export function Teams() {
   };
 
   const growthData = prepareGrowthData();
+
+  // Prepare user growth data across all modes for the individual user graph
+  const prepareUserGrowthData = () => {
+    if (Object.keys(userModePerformanceData).length === 0) {
+      return [];
+    }
+
+    // Get all unique months from all modes
+    const allMonths = new Set<string>();
+    Object.values(userModePerformanceData).forEach((modeData: any) => {
+      if (Array.isArray(modeData?.monthly_scores)) {
+        modeData.monthly_scores.forEach((score: any) => {
+          if (score.month) {
+            allMonths.add(score.month);
+          }
+        });
+      }
+    });
+
+    // Sort months chronologically
+    const sortedMonths = Array.from(allMonths).sort((a, b) => {
+      const dateA = new Date(a + '-01');
+      const dateB = new Date(b + '-01');
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    // Create data structure for chart
+    const chartData: any[] = sortedMonths.map(month => {
+      const dataPoint: any = {
+        month: moment(month + '-01').format("MMM"),
+        monthKey: month,
+      };
+
+      // Add each mode's score for this month
+      ['prospecting', 'discovering', 'closing'].forEach((modeName) => {
+        const modeData = userModePerformanceData[modeName];
+        if (modeData?.monthly_scores) {
+          const monthlyScore = modeData.monthly_scores.find((s: any) => s.month === month);
+          
+          if (monthlyScore) {
+            if (typeof monthlyScore.average_overall_score === 'number') {
+              dataPoint[modeName] = monthlyScore.average_overall_score;
+            } else if (monthlyScore.session_count !== undefined && monthlyScore.session_count === 0) {
+              dataPoint[modeName] = 0;
+            } else {
+              dataPoint[modeName] = null;
+            }
+          } else {
+            dataPoint[modeName] = null;
+          }
+        } else {
+          dataPoint[modeName] = null;
+        }
+      });
+
+      return dataPoint;
+    });
+
+    return chartData;
+  };
+
+  const userGrowthData = prepareUserGrowthData();
 
   console.log(growthData, "growthData")
 
@@ -2077,10 +2281,33 @@ export function Teams() {
           {/* Scenario Dashboard */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="w-5 h-5" />
-                Scenarios
-              </CardTitle>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="w-5 h-5" />
+                  Scenarios
+                </CardTitle>
+                {/* Toggle View Mode */}
+                <div className="flex items-center gap-1 p-1 bg-muted rounded-lg">
+                  <Button
+                    variant={scenariosViewMode === 'by-users' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setScenariosViewMode('by-users')}
+                    className={`text-sm ${scenariosViewMode === 'by-users' ? 'bg-yellow-400 text-black hover:bg-yellow-500' : 'hover:bg-muted-foreground/10'}`}
+                  >
+                    <Users className="w-4 h-4 mr-1.5" />
+                    By Users
+                  </Button>
+                  <Button
+                    variant={scenariosViewMode === 'by-scenarios' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setScenariosViewMode('by-scenarios')}
+                    className={`text-sm ${scenariosViewMode === 'by-scenarios' ? 'bg-yellow-400 text-black hover:bg-yellow-500' : 'hover:bg-muted-foreground/10'}`}
+                  >
+                    <FileText className="w-4 h-4 mr-1.5" />
+                    By Scenarios
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               {loadingScenarioDashboard ? (
@@ -2146,119 +2373,260 @@ export function Teams() {
                     </div>
                   </div>
 
-                  {/* Assigned Scenarios Listing */}
-                  {scenarioDashboardData?.assigned_scenarios && scenarioDashboardData.assigned_scenarios.length > 0 ? (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between border-b border-border pb-2">
-                        <h3 className="text-lg font-semibold text-black">Assigned Scenarios</h3>
-                        <Badge variant="secondary" className="bg-yellow-100 text-black border-yellow-200">
-                          {scenarioDashboardData.assigned_scenarios.length} {scenarioDashboardData.assigned_scenarios.length === 1 ? 'scenario' : 'scenarios'}
-                        </Badge>
+                  {/* Assigned Scenarios Listing - By Users View */}
+                  {scenariosViewMode === 'by-users' && (
+                    scenarioDashboardData?.assigned_scenarios && scenarioDashboardData.assigned_scenarios.length > 0 ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between border-b border-border pb-2">
+                          <h3 className="text-lg font-semibold text-black">Assigned Scenarios</h3>
+                          <Badge variant="secondary" className="bg-yellow-100 text-black border-yellow-200">
+                            {scenarioDashboardData.assigned_scenarios.length} {scenarioDashboardData.assigned_scenarios.length === 1 ? 'scenario' : 'scenarios'}
+                          </Badge>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          {(() => {
+                            // Group scenarios by user_id
+                            const scenariosByUser: Record<string, any[]> = {};
+                            scenarioDashboardData.assigned_scenarios.forEach((scenario: any) => {
+                              const userId = scenario.user_id;
+                              if (!scenariosByUser[userId]) {
+                                scenariosByUser[userId] = [];
+                              }
+                              scenariosByUser[userId].push(scenario);
+                            });
+
+                            // Get unique users
+                            const uniqueUsers = Object.keys(scenariosByUser).map(userId => {
+                              const userScenarios = scenariosByUser[userId];
+                              const firstScenario = userScenarios[0];
+                              
+                              // Calculate completed and pending/overdue counts
+                              const completedScenarios = userScenarios.filter((s: any) => s.is_completed);
+                              const pendingScenarios = userScenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) > 0);
+                              const lapsedScenarios = userScenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) === 0);
+                              const pendingOverdueCount = pendingScenarios.length + lapsedScenarios.length;
+                              
+                              return {
+                                userId,
+                                user_name: firstScenario.user_name,
+                                user_email: firstScenario.user_email,
+                                scenarioCount: userScenarios.length,
+                                completedCount: completedScenarios.length,
+                                pendingOverdueCount: pendingOverdueCount,
+                                scenarios: userScenarios
+                              };
+                            });
+
+                            return uniqueUsers.map((user, index) => {
+                              const handleUserClick = () => {
+                                setSelectedUserScenarios(user.scenarios);
+                                setSelectedUserInfo({
+                                  name: user.user_name || "Unknown User",
+                                  email: user.user_email || "",
+                                  userId: user.userId
+                                });
+                                setIsUserScenariosDialogOpen(true);
+                              };
+
+                              return (
+                                <div
+                                  key={user.userId || index}
+                                  onClick={handleUserClick}
+                                  className="p-4 rounded-lg border border-border bg-card hover:border-yellow-200 hover:shadow-md transition-all duration-200 cursor-pointer"
+                                >
+                                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                                    {/* Left Side - User Info */}
+                                    <div className="flex items-start gap-4 flex-1">
+                                      <div className="p-2 rounded-lg bg-yellow-100 flex-shrink-0">
+                                        <UserCircle className="h-5 w-5 text-black" />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <p className="font-semibold text-base text-black">{user.user_name || "Unknown User"}</p>
+                                        </div>
+                                        <p className="text-sm text-black/60">{user.user_email || ""}</p>
+                                      </div>
+                                    </div>
+
+                                    {/* Right Side - Completed and Pending/Overdue Counts */}
+                                    <div className="flex flex-row items-center gap-4 sm:flex-shrink-0">
+                                      {/* Completed Scenarios */}
+                                      <div className="flex items-center gap-1.5">
+                                        {/* <CheckCircle className="h-4 w-4 text-green-600" /> */}
+                                        <Badge 
+                                          variant="outline" 
+                                          className="text-sm font-semibold border-green-300 bg-green-50 text-green-700 px-3 py-1 whitespace-nowrap"
+                                        >
+                                          {user.completedCount} Completed
+                                        </Badge>
+                                      </div>
+                                      
+                                      {/* Pending/Overdue Scenarios */}
+                                      <div className="flex items-center gap-1.5">
+                                        {/* <Clock className="h-4 w-4 text-orange-600" /> */}
+                                        <Badge 
+                                          variant="outline" 
+                                          className="text-sm font-semibold border-orange-300 bg-orange-50 text-orange-700 px-3 py-1 whitespace-nowrap"
+                                        >
+                                          {user.pendingOverdueCount} Pending/Overdue
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
                       </div>
-                      
-                      <div className="space-y-3">
-                        {(() => {
-                          // Group scenarios by user_id
-                          const scenariosByUser: Record<string, any[]> = {};
-                          scenarioDashboardData.assigned_scenarios.forEach((scenario: any) => {
-                            const userId = scenario.user_id;
-                            if (!scenariosByUser[userId]) {
-                              scenariosByUser[userId] = [];
-                            }
-                            scenariosByUser[userId].push(scenario);
-                          });
+                    ) : (
+                      <div className="text-center py-8 border-t border-border">
+                        <div className="flex flex-col items-center gap-2">
+                          <Target className="h-8 w-8 text-muted-foreground opacity-50" />
+                          <p className="text-sm text-muted-foreground">No scenarios assigned yet</p>
+                        </div>
+                      </div>
+                    )
+                  )}
 
-                          // Get unique users
-                          const uniqueUsers = Object.keys(scenariosByUser).map(userId => {
-                            const userScenarios = scenariosByUser[userId];
-                            const firstScenario = userScenarios[0];
-                            
-                            // Calculate completed and pending/overdue counts
-                            const completedScenarios = userScenarios.filter((s: any) => s.is_completed);
-                            const pendingScenarios = userScenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) > 0);
-                            const lapsedScenarios = userScenarios.filter((s: any) => !s.is_completed && (s.days_remaining ?? 0) === 0);
-                            const pendingOverdueCount = pendingScenarios.length + lapsedScenarios.length;
-                            
-                            return {
-                              userId,
-                              user_name: firstScenario.user_name,
-                              user_email: firstScenario.user_email,
-                              scenarioCount: userScenarios.length,
-                              completedCount: completedScenarios.length,
-                              pendingOverdueCount: pendingOverdueCount,
-                              scenarios: userScenarios
+                  {/* Assigned Scenarios Listing - By Scenarios View */}
+                  {scenariosViewMode === 'by-scenarios' && (
+                    loadingScenariosByScenario ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent"></div>
+                          <p className="text-sm text-muted-foreground">Loading scenarios...</p>
+                        </div>
+                      </div>
+                    ) : scenariosByScenarioData && scenariosByScenarioData.length > 0 ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between border-b border-border pb-2">
+                          <h3 className="text-lg font-semibold text-black">Scenarios</h3>
+                          <Badge variant="secondary" className="bg-yellow-100 text-black border-yellow-200">
+                            {scenariosByScenarioData.length} {scenariosByScenarioData.length === 1 ? 'scenario' : 'scenarios'}
+                          </Badge>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          {scenariosByScenarioData.map((scenario: any, index: number) => {
+                            const usersCompleted = scenario.users_completed || [];
+                            const usersPending = scenario.users_pending || [];
+                            const usersOverdue = scenario.users_overdue || [];
+                            const totalUsers = usersCompleted.length + usersPending.length + usersOverdue.length;
+                            const completedCount = scenario.completed_count ?? usersCompleted.length;
+                            const pendingOverdueCount = scenario.pending_overdue_count ?? (usersPending.length + usersOverdue.length);
+
+                            // Get first available session_id (prefer completed, then pending, then overdue)
+                            const firstSessionId = usersCompleted.length > 0 
+                              ? usersCompleted[0]?.session_id 
+                              : usersPending.length > 0 
+                                ? usersPending[0]?.session_id 
+                                : usersOverdue.length > 0 
+                                  ? usersOverdue[0]?.session_id 
+                                  : null;
+
+                            const handleScenarioClick = () => {
+                              setSelectedScenarioDetails(scenario);
+                              setIsScenarioUsersDialogOpen(true);
                             };
-                          });
 
-                          return uniqueUsers.map((user, index) => {
-                            const handleUserClick = () => {
-                              setSelectedUserScenarios(user.scenarios);
-                              setSelectedUserInfo({
-                                name: user.user_name || "Unknown User",
-                                email: user.user_email || "",
-                                userId: user.userId
-                              });
-                              setIsUserScenariosDialogOpen(true);
+                            const handleShareClick = (e: React.MouseEvent) => {
+                              e.stopPropagation();
+                              if (firstSessionId) {
+                                handleShareScenario({ session_id: firstSessionId, ...scenario });
+                              }
+                            };
+
+                            const handleDeleteClick = (e: React.MouseEvent) => {
+                              e.stopPropagation();
+                              if (firstSessionId) {
+                                openDeleteScenarioDialog(firstSessionId);
+                              }
                             };
 
                             return (
                               <div
-                                key={user.userId || index}
-                                onClick={handleUserClick}
+                                key={scenario.scenario_id || index}
+                                onClick={handleScenarioClick}
                                 className="p-4 rounded-lg border border-border bg-card hover:border-yellow-200 hover:shadow-md transition-all duration-200 cursor-pointer"
                               >
                                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                                  {/* Left Side - User Info */}
+                                  {/* Left Side - Scenario Info */}
                                   <div className="flex items-start gap-4 flex-1">
                                     <div className="p-2 rounded-lg bg-yellow-100 flex-shrink-0">
-                                      <UserCircle className="h-5 w-5 text-black" />
+                                      <FileText className="h-5 w-5 text-black" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 mb-1">
-                                        <p className="font-semibold text-base text-black">{user.user_name || "Unknown User"}</p>
+                                        <p className="font-semibold text-base text-black">{scenario.title || `Scenario ${index + 1}`}</p>
                                       </div>
-                                      <p className="text-sm text-black/60">{user.user_email || ""}</p>
+                                      <p className="text-sm text-black/60">{scenario.mode?.name ? scenario.mode.name.charAt(0).toUpperCase() + scenario.mode.name.slice(1) : ''}</p>
                                     </div>
                                   </div>
 
-                                  {/* Right Side - Completed and Pending/Overdue Counts */}
+                                  {/* Right Side - Counts and Actions */}
                                   <div className="flex flex-row items-center gap-4 sm:flex-shrink-0">
-                                    {/* Completed Scenarios */}
-                                    <div className="flex items-center gap-1.5">
-                                      {/* <CheckCircle className="h-4 w-4 text-green-600" /> */}
-                                      <Badge 
-                                        variant="outline" 
-                                        className="text-sm font-semibold border-green-300 bg-green-50 text-green-700 px-3 py-1 whitespace-nowrap"
-                                      >
-                                        {user.completedCount} Completed
-                                      </Badge>
-                                    </div>
-                                    
-                                    {/* Pending/Overdue Scenarios */}
-                                    <div className="flex items-center gap-1.5">
-                                      {/* <Clock className="h-4 w-4 text-orange-600" /> */}
-                                      <Badge 
-                                        variant="outline" 
-                                        className="text-sm font-semibold border-orange-300 bg-orange-50 text-orange-700 px-3 py-1 whitespace-nowrap"
-                                      >
-                                        {user.pendingOverdueCount} Pending/Overdue
-                                      </Badge>
-                                    </div>
+                                    <Badge 
+                                      variant="outline" 
+                                      className="text-sm font-semibold border-gray-300 bg-gray-50 text-gray-700 px-3 py-1 whitespace-nowrap"
+                                    >
+                                      {totalUsers} {totalUsers === 1 ? 'User' : 'Users'}
+                                    </Badge>
+                                    <Badge 
+                                      variant="outline" 
+                                      className="text-sm font-semibold border-green-300 bg-green-50 text-green-700 px-3 py-1 whitespace-nowrap"
+                                    >
+                                      {completedCount} Completed
+                                    </Badge>
+                                    <Badge 
+                                      variant="outline" 
+                                      className="text-sm font-semibold border-orange-300 bg-orange-50 text-orange-700 px-3 py-1 whitespace-nowrap"
+                                    >
+                                      {pendingOverdueCount} Pending/Overdue
+                                    </Badge>
+                                    {firstSessionId && (
+                                      <div className="flex items-center gap-1">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={handleShareClick}
+                                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 h-8 w-8 p-0"
+                                          title="Share scenario"
+                                          disabled={sharingSessionIdState === firstSessionId}
+                                        >
+                                          {sharingSessionIdState === firstSessionId ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                          ) : (
+                                            <Share2 className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={handleDeleteClick}
+                                          className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8 p-0"
+                                          title="Delete scenario"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </div>
                             );
-                          });
-                        })()}
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 border-t border-border">
-                      <div className="flex flex-col items-center gap-2">
-                        <Target className="h-8 w-8 text-muted-foreground opacity-50" />
-                        <p className="text-sm text-muted-foreground">No scenarios assigned yet</p>
+                    ) : (
+                      <div className="text-center py-8 border-t border-border">
+                        <div className="flex flex-col items-center gap-2">
+                          <FileText className="h-8 w-8 text-muted-foreground opacity-50" />
+                          <p className="text-sm text-muted-foreground">No scenarios found</p>
+                        </div>
                       </div>
-                    </div>
+                    )
                   )}
                 </>
               ) : (
@@ -2402,9 +2770,9 @@ export function Teams() {
                                                             onClick={() => handleShareScenario(scenario)}
                                                             className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                                                             title="Share scenario"
-                                                            disabled={isLoadingShareScenario}
+                                                            disabled={sharingSessionIdState === scenario.session_id}
                                                           >
-                                                            {isLoadingShareScenario ? (
+                                                            {sharingSessionIdState === scenario.session_id ? (
                                                               <Loader2 className="h-4 w-4 animate-spin" />
                                                             ) : (
                                                               <Share2 className="h-4 w-4" />
@@ -2613,9 +2981,9 @@ export function Teams() {
                                                           onClick={() => handleShareScenario(scenario)}
                                                           className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                                                           title="Share scenario"
-                                                          disabled={isLoadingShareScenario}
+                                                          disabled={sharingSessionIdState === scenario.session_id}
                                                         >
-                                                          {isLoadingShareScenario ? (
+                                                          {sharingSessionIdState === scenario.session_id ? (
                                                             <Loader2 className="h-4 w-4 animate-spin" />
                                                           ) : (
                                                             <Share2 className="h-4 w-4" />
@@ -2768,6 +3136,319 @@ export function Teams() {
                           </>
                         );
                       })()}
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {/* Scenario Users Details Dialog - For "By Scenarios" View */}
+          <Dialog open={isScenarioUsersDialogOpen} onOpenChange={setIsScenarioUsersDialogOpen}>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  <span>Users for {selectedScenarioDetails?.title || "Scenario"}</span>
+                </DialogTitle>
+              </DialogHeader>
+              
+              {selectedScenarioDetails && (
+                <div className="space-y-4">
+                  {/* Scenario Details Card - Shown Once at Top */}
+                  <Card className="border-border">
+                    <CardContent className="p-6">
+                      <div className="space-y-4">
+                        {/* Information Section */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                              <Calendar className="h-4 w-4 text-black/60" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-medium text-black/50 mb-1">Created On</p>
+                              <p className="text-sm font-semibold text-black">
+                                {selectedScenarioDetails.created_at 
+                                  ? new Date(selectedScenarioDetails.created_at).toLocaleDateString('en-US', { 
+                                      weekday: 'short',
+                                      month: 'short', 
+                                      day: 'numeric',
+                                      year: 'numeric'
+                                    })
+                                  : "N/A"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                              <Target className="h-4 w-4 text-black/60" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-medium text-black/50 mb-1">Deadline</p>
+                              <p className="text-sm font-semibold text-black">{selectedScenarioDetails.time_limit_days || 0} days</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                              <Target className="h-4 w-4 text-black/60" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-medium text-black/50 mb-1">Mode</p>
+                              <p className="text-sm font-semibold text-black">
+                                {formatText(selectedScenarioDetails.mode?.name || "N/A")}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 rounded-lg bg-yellow-50/30 border border-border/50">
+                              <UserCircle className="h-4 w-4 text-black/60" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-1 mb-1">
+                                <p className="text-xs font-medium text-black/50">Persona</p>
+                                {getPersonaIdFromScenario(selectedScenarioDetails) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => handlePersonaInfoClick(selectedScenarioDetails, e)}
+                                    className="h-2 w-2 p-0 pt-[2px] pl-2 text-black/50 hover:text-black/80 hover:bg-transparent min-w-0"
+                                    title="View persona details"
+                                  >
+                                    <Info className="h-1.5 w-1.5" />
+                                  </Button>
+                                )}
+                              </div>
+                              <p className="text-sm font-semibold text-black">
+                                {selectedScenarioDetails.persona?.name || "N/A"}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Scenario Message */}
+                        {selectedScenarioDetails.scenario_text && (
+                          <div className="pt-3 border-t border-border/50">
+                            <div className="flex items-start gap-2">
+                              <FileText className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
+                              <div className="flex-1">
+                                <p className="text-xs font-medium text-black/60 mb-1">Scenario Message</p>
+                                <p className="text-sm text-black leading-relaxed">{selectedScenarioDetails.scenario_text}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Manager Message */}
+                        {selectedScenarioDetails.message && (
+                          <div className="pt-2">
+                            <div className="flex items-start gap-2">
+                              <Info className="h-4 w-4 text-black/60 mt-0.5 flex-shrink-0" />
+                              <div className="flex-1">
+                                <p className="text-xs font-medium text-black/60 mb-1">Message</p>
+                                <p className="text-sm text-black leading-relaxed italic">"{selectedScenarioDetails.message}"</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Users List */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-black">
+                      All Users ({(selectedScenarioDetails.users_completed?.length || 0) + (selectedScenarioDetails.users_pending?.length || 0) + (selectedScenarioDetails.users_overdue?.length || 0)})
+                    </h3>
+                    
+                    {(() => {
+                      const usersCompleted = selectedScenarioDetails.users_completed || [];
+                      const usersPending = selectedScenarioDetails.users_pending || [];
+                      const usersOverdue = selectedScenarioDetails.users_overdue || [];
+                      const pendingOverdueUsers = [...usersPending, ...usersOverdue];
+                      const hasUsers = usersCompleted.length > 0 || usersPending.length > 0 || usersOverdue.length > 0;
+                      
+                      if (!hasUsers) {
+                        return (
+                          <div className="text-center py-8">
+                            <UserCircle className="h-12 w-12 mx-auto text-muted-foreground/50 mb-2" />
+                            <p className="text-sm text-muted-foreground">No users assigned to this scenario</p>
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <>
+                          {/* Pending/Overdue Users Section */}
+                          {(usersPending.length > 0 || usersOverdue.length > 0) && (
+                            <div className="space-y-4">
+                              <Button
+                                variant="outline"
+                                onClick={() => setIsScenarioPendingOverdueOpen(!isScenarioPendingOverdueOpen)}
+                                className="w-full flex items-center justify-between p-4 h-auto border-2 border-border bg-card hover:bg-muted"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <Clock className="h-5 w-5 text-black" />
+                                  <span className="text-lg font-semibold text-black">Pending/Overdue</span>
+                                  <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300">
+                                    {usersPending.length} pending
+                                  </Badge>
+                                  {usersOverdue.length > 0 && (
+                                    <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
+                                      {usersOverdue.length} overdue
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="w-6 h-6 rounded bg-[#FFDE5A] flex items-center justify-center shrink-0">
+                                  <Plus className={`h-4 w-4 text-black ${isScenarioPendingOverdueOpen ? 'hidden' : ''}`} />
+                                  <Minus className={`h-4 w-4 text-black ${isScenarioPendingOverdueOpen ? '' : 'hidden'}`} />
+                                </div>
+                              </Button>
+
+                              {isScenarioPendingOverdueOpen && (
+                                <div className="grid gap-4">
+                                  {pendingOverdueUsers.length > 0 ? (
+                                    pendingOverdueUsers.map((user: any, userIndex: number) => {
+                                      const isPending = (user.days_remaining ?? 0) > 0;
+                                      return (
+                                        <Card
+                                          key={user.user_id || userIndex}
+                                          className="border-border hover:border-yellow-200 hover:shadow-lg transition-all duration-300 overflow-hidden"
+                                        >
+                                          <CardContent className="p-4">
+                                            <div className="flex items-center justify-between gap-4">
+                                              <div className="flex items-center gap-3">
+                                                <div className={`p-2 rounded-lg ${isPending ? 'bg-red-50' : 'bg-orange-50'}`}>
+                                                  <UserCircle className={`h-5 w-5 ${isPending ? 'text-red-600' : 'text-orange-600'}`} />
+                                                </div>
+                                                <div>
+                                                  <p className="font-semibold text-black">{user.name || 'Unknown User'}</p>
+                                                  {user.email && (
+                                                    <p className="text-sm text-black/60">{user.email}</p>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <div className="flex items-center gap-3">
+                                                <div className="text-right">
+                                                  <p className="text-xs font-medium text-black/50">Days Remaining</p>
+                                                  <p className={`text-sm font-semibold ${isPending ? 'text-red-600' : 'text-orange-600'}`}>
+                                                    {isPending 
+                                                      ? `${user.days_remaining || 0} ${user.days_remaining === 1 ? 'day' : 'days'}`
+                                                      : '0 days (Time lapsed)'}
+                                                  </p>
+                                                </div>
+                                                <Badge 
+                                                  variant="outline"
+                                                  className={`text-xs font-medium px-3 py-1.5 shrink-0 ${
+                                                    isPending 
+                                                      ? 'border-red-300 bg-red-50 text-red-700'
+                                                      : 'border-orange-400 bg-orange-100 text-orange-700'
+                                                  }`}
+                                                >
+                                                  {isPending ? (
+                                                    <>
+                                                      <Clock className="h-3 w-3 mr-1.5" />
+                                                      Pending
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <AlertCircle className="h-3 w-3 mr-1.5" />
+                                                      Overdue
+                                                    </>
+                                                  )}
+                                                </Badge>
+                                              </div>
+                                            </div>
+                                          </CardContent>
+                                        </Card>
+                                      );
+                                    })
+                                  ) : (
+                                    <Card>
+                                      <CardContent className="p-8">
+                                        <div className="flex flex-col items-center justify-center gap-2 text-center">
+                                          <Clock className="h-8 w-8 text-red-300" />
+                                          <p className="text-sm text-muted-foreground">No pending or overdue users</p>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Completed Users Section */}
+                          {usersCompleted.length > 0 && (
+                            <div className="space-y-4">
+                              <Button
+                                variant="outline"
+                                onClick={() => setIsScenarioCompletedOpen(!isScenarioCompletedOpen)}
+                                className="w-full flex items-center justify-between p-4 h-auto border-2 border-border bg-card hover:bg-muted"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <CheckCircle className="h-5 w-5 text-black" />
+                                  <span className="text-lg font-semibold text-black">Completed</span>
+                                  <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">
+                                    {usersCompleted.length} {usersCompleted.length === 1 ? 'user' : 'users'}
+                                  </Badge>
+                                </div>
+                                <div className="w-6 h-6 rounded bg-[#FFDE5A] flex items-center justify-center shrink-0">
+                                  <Plus className={`h-4 w-4 text-black ${isScenarioCompletedOpen ? 'hidden' : ''}`} />
+                                  <Minus className={`h-4 w-4 text-black ${isScenarioCompletedOpen ? '' : 'hidden'}`} />
+                                </div>
+                              </Button>
+
+                              {isScenarioCompletedOpen && (
+                                <div className="grid gap-4">
+                                  {usersCompleted.map((user: any, userIndex: number) => (
+                                    <Card
+                                      key={user.user_id || userIndex}
+                                      className="border-border hover:border-yellow-200 hover:shadow-lg transition-all duration-300 overflow-hidden"
+                                    >
+                                      <CardContent className="p-4">
+                                        <div className="flex items-center justify-between gap-4">
+                                          <div className="flex items-center gap-3">
+                                            <div className="p-2 rounded-lg bg-green-50">
+                                              <UserCircle className="h-5 w-5 text-green-600" />
+                                            </div>
+                                            <div>
+                                              <p className="font-semibold text-black">{user.name || 'Unknown User'}</p>
+                                              {user.email && (
+                                                <p className="text-sm text-black/60">{user.email}</p>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center gap-3">
+                                            <div className="text-right">
+                                              <p className="text-xs font-medium text-black/50">Completed On</p>
+                                              <p className="text-sm font-semibold text-green-600">
+                                                {user.end_time 
+                                                  ? new Date(user.end_time).toLocaleDateString('en-US', { 
+                                                      month: 'short', 
+                                                      day: 'numeric',
+                                                      year: 'numeric'
+                                                    })
+                                                  : "N/A"}
+                                              </p>
+                                            </div>
+                                            <Badge 
+                                              variant="outline"
+                                              className="text-xs font-medium px-3 py-1.5 shrink-0 border-green-300 bg-green-50 text-green-700"
+                                            >
+                                              <CheckCircle className="h-3 w-3 mr-1.5" />
+                                              Completed
+                                            </Badge>
+                                          </div>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
@@ -3175,6 +3856,7 @@ export function Teams() {
               setDocumentSummary("");
               setIsUploadingDocument(false);
               setSharingSessionId(null); // Reset sharing session ID when dialog closes
+              setSharingSessionIdState(null); // Reset sharing session ID state when dialog closes
               setIsLoadingShareScenario(false); // Reset loading state
             }
           }}>
@@ -3847,17 +4529,36 @@ export function Teams() {
 
   } else {
     // meber details
+    // Find the selected member's data
+    let selectedMemberData: any = null;
+    if (Array.isArray(data)) {
+      for (const team of data) {
+        if (team?.company_team_id === selectedTeam?.company_team_id && Array.isArray(team.members)) {
+          selectedMemberData = team.members.find((member: any) => 
+            member?.member_id === selectMember || String(member?.member_id) === String(selectMember)
+          );
+          if (selectedMemberData) break;
+        }
+      }
+    }
+
     return (
       <div className="p-6 space-y-8">
         <div className="flex items-center justify-between gap-4 relative">
           <div className="w-full flex items-center justify-between gap-4">
-            <div>
-              {/* <h1 className="text-3xl font-bold tracking-tight">{selectedTeam?.name}</h1>
-              <p className="text-muted-foreground">{selectedTeam?.company}</p> */}
+            <div className="flex-1">
               {Array.isArray(data) && data.map((team, teamIdx) => (
                 team?.company_team_id === selectedTeam?.company_team_id ?
-                  <div key={`team-${teamIdx}`}>
+                  <div key={`team-${teamIdx}`} className="space-y-2">
                     <span className="text-3xl font-bold tracking-tight">Team {team?.name}</span>
+                    {selectedMemberData && (
+                      <div className="flex flex-col">
+                        <span className="text-xl font-semibold text-gray-700">
+                          {selectedMemberData?.user?.first_name} {selectedMemberData?.user?.last_name}
+                        </span>
+                        <span className="text-base text-gray-500">{selectedMemberData?.user?.email}</span>
+                      </div>
+                    )}
                   </div> : null))}
             </div>
             <Button
@@ -3872,6 +4573,107 @@ export function Teams() {
           </div>
 
         </div>
+
+        {/* User Performance Growth Chart - Shows performance across all modes */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between mb-4">
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5" />
+                User Performance Growth
+              </CardTitle>
+              <Badge className="!rounded-sm">
+                <p className="text-sm">{moment().format("MMM Do YY")}</p>
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoadingUserGraph ? (
+              <div className="h-80 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : userGrowthData.length > 0 ? (
+              <>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={userGrowthData}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis dataKey="month" className="text-muted-foreground" />
+                      <YAxis domain={[0, 100]} className="text-muted-foreground" />
+                      <RechartsTooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }} />
+                      <Line
+                        type="monotone"
+                        dataKey="prospecting"
+                        name="Prospecting"
+                        stroke="#f59e0b"
+                        strokeWidth={3}
+                        dot={{ fill: '#f59e0b', strokeWidth: 2, r: 6 }}
+                        activeDot={{ r: 8, stroke: '#f59e0b', strokeWidth: 2 }}
+                        connectNulls={true}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="discovering"
+                        name="Discovering"
+                        stroke="#22c55e"
+                        strokeWidth={3}
+                        dot={{ fill: '#22c55e', strokeWidth: 2, r: 6 }}
+                        activeDot={{ r: 8, stroke: '#22c55e', strokeWidth: 2 }}
+                        connectNulls={true}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="closing"
+                        name="Closing"
+                        stroke="#ef4444"
+                        strokeWidth={3}
+                        dot={{ fill: '#ef4444', strokeWidth: 2, r: 6 }}
+                        activeDot={{ r: 8, stroke: '#ef4444', strokeWidth: 2 }}
+                        connectNulls={true}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Mode Legend */}
+                <div className="mt-6 pt-4 border-t">
+                  <div className="flex flex-wrap gap-4 justify-center items-center">
+                    <div className="flex items-center gap-2 cursor-pointer">
+                      <div 
+                        className="w-4 h-4 rounded-full" 
+                        style={{ backgroundColor: '#f59e0b' }}
+                      />
+                      <span className="text-sm font-medium">Prospecting</span>
+                    </div>
+                    <div className="flex items-center gap-2 cursor-pointer">
+                      <div 
+                        className="w-4 h-4 rounded-full" 
+                        style={{ backgroundColor: '#22c55e' }}
+                      />
+                      <span className="text-sm font-medium">Discovering</span>
+                    </div>
+                    <div className="flex items-center gap-2 cursor-pointer">
+                      <div 
+                        className="w-4 h-4 rounded-full" 
+                        style={{ backgroundColor: '#ef4444' }}
+                      />
+                      <span className="text-sm font-medium">Closing</span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="h-80 flex items-center justify-center">
+                <div className="text-center text-muted-foreground">
+                  <TrendingUp className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p>No performance data available yet</p>
+                  <p className="text-sm">Complete sessions across different modes to see growth</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card className="grid gap-6 lg:grid-cols-1">
           {/* Skill Breakdown by Modes as Accordion */}
           <div className="w-full">
@@ -3879,15 +4681,7 @@ export function Teams() {
               team?.company_team_id === selectedTeam?.company_team_id ?
                 <div key={`team-${teamIdx}`}>
                   <CardHeader className="pb-4">
-                    {/* <span className="font-semibold">Team Performance - {team?.name}</span> */}
-                    {team.members.map((member, memberIdx) => (
-                      member?.member_id === selectMember ?
-                        <div key={memberIdx} className="space-y-2">
-                          <div className="flex flex-col items-start w-full">
-                            <span className="font-semibold text-xl text-gray-700">{member?.user?.first_name} {member?.user?.last_name}</span>
-                            <span className="text-base text-gray-500">{member?.user?.email}</span>
-                          </div>
-                        </div> : null))}
+                    <span className="font-semibold text-lg">Performance by Mode</span>
                   </CardHeader>
                   <CardContent className="p-6">
                     <div className="shadow-none border-none">

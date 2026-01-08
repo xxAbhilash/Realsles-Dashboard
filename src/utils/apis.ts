@@ -17,6 +17,7 @@ export const apis = {
   ,scenarios: "/v1/scenarios/" // Create scenario
   ,scenarios_dashboard_manager: "/v1/scenarios/dashboard/manager" // Get scenario dashboard data for manager
   ,scenarios_dashboard_sales_rep: "/v1/scenarios/dashboard/sales-rep" // Get scenario dashboard data for sales rep
+  ,scenarios_by_team: "/v1/scenarios/team/" // Usage: /v1/scenarios/team/{team_id}/scenarios
   ,performance_report: "/v1/performance-reports/" // Get performance report by session_id
   ,documents_upload: "/v1/documents/upload" // Upload and process document
 };
