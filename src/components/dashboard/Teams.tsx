@@ -1586,30 +1586,83 @@ export function Teams() {
         const memberKey = member.user_name || `Member ${member.member_id}`;
         const monthlyScore = member.monthly_scores?.find((s: any) => s.month === month);
         
-        // Handle different scenarios:
-        // 1. If average_overall_score is a number (including 0), use it
-        // 2. If average_overall_score is null/undefined but session_count exists and is 0, use 0
-        // 3. If no monthly score entry exists for this month, use null
-        if (monthlyScore) {
-          if (typeof monthlyScore.average_overall_score === 'number') {
-            // Use the actual score value (including 0)
-            dataPoint[memberKey] = monthlyScore.average_overall_score;
-          } else if (monthlyScore.session_count !== undefined && monthlyScore.session_count === 0) {
-            // If session_count is 0, show 0 on the graph so line connects
-            dataPoint[memberKey] = 0;
-          } else {
-            // If no score data available, use null (line will not connect)
-            dataPoint[memberKey] = null;
+        // Helper to validate and parse score values
+        const getValidScore = (monthData: any): number | null => {
+          if (!monthData) return null;
+          
+          const score = monthData.average_overall_score;
+          const sessionCount = monthData.session_count;
+          
+          // If session_count is 0 or null/undefined, there's no real score data
+          // Even if average_overall_score is 0, it's meaningless without sessions
+          if (sessionCount === 0 || sessionCount === null || sessionCount === undefined) {
+            return null;
           }
-        } else {
-          // No data point for this month - use null
-          dataPoint[memberKey] = null;
-        }
+          
+          if (score === null || score === undefined) return null;
+          
+          // Handle string numbers from API
+          const numScore = typeof score === 'string' ? parseFloat(score) : score;
+          
+          // Validate it's a finite number (excludes NaN, Infinity, -Infinity)
+          if (typeof numScore === 'number' && Number.isFinite(numScore)) {
+            return numScore;
+          }
+          return null;
+        };
+        
+        dataPoint[memberKey] = getValidScore(monthlyScore);
       });
 
       return dataPoint;
     });
 
+    // Handle null values for each member's data:
+    // 1. Find if member has any valid scores
+    // 2. If they have at least one score:
+    //    - Nulls BEFORE first score → Set to 0 (shows growth from bottom)
+    //    - Nulls AFTER first score → Carry forward last valid score
+    // 3. If all nulls (no scores ever) → Keep as null (no line rendered)
+    teamMembersGraph.members.forEach((member: any) => {
+      const memberKey = member.user_name || `Member ${member.member_id}`;
+      
+      // First, check if this member has any valid scores at all
+      const hasAnyScore = chartData.some((dp: any) => 
+        dp[memberKey] !== null && dp[memberKey] !== undefined
+      );
+      
+      // If no scores at all, leave everything as null (line won't render)
+      if (!hasAnyScore) {
+        return;
+      }
+      
+      // Find the index of the first valid score
+      const firstScoreIndex = chartData.findIndex((dp: any) => 
+        dp[memberKey] !== null && dp[memberKey] !== undefined
+      );
+      
+      // Set all nulls BEFORE first score to 0 (shows growth from bottom)
+      for (let i = 0; i < firstScoreIndex; i++) {
+        if (chartData[i][memberKey] === null || chartData[i][memberKey] === undefined) {
+          chartData[i][memberKey] = 0;
+        }
+      }
+      
+      // Forward-fill nulls AFTER first score with last valid score
+      let lastValidScore: number | null = null;
+      for (let i = firstScoreIndex; i < chartData.length; i++) {
+        const currentValue = chartData[i][memberKey];
+        
+        if (currentValue !== null && currentValue !== undefined) {
+          lastValidScore = currentValue;
+        } else if (lastValidScore !== null) {
+          // Gap after growth started - carry forward previous score
+          chartData[i][memberKey] = lastValidScore;
+        }
+      }
+    });
+
+    console.log("Chart data after processing:", chartData);
     return chartData;
   };
 
@@ -1640,6 +1693,30 @@ export function Teams() {
       return dateA.getTime() - dateB.getTime();
     });
 
+    // Helper to validate and parse score values
+    const getValidScore = (monthData: any): number | null => {
+      if (!monthData) return null;
+      
+      const score = monthData.average_overall_score;
+      const sessionCount = monthData.session_count;
+      
+      // If session_count is 0 or null/undefined, there's no real score data
+      if (sessionCount === 0 || sessionCount === null || sessionCount === undefined) {
+        return null;
+      }
+      
+      if (score === null || score === undefined) return null;
+      
+      // Handle string numbers from API
+      const numScore = typeof score === 'string' ? parseFloat(score) : score;
+      
+      // Validate it's a finite number (excludes NaN, Infinity, -Infinity)
+      if (typeof numScore === 'number' && Number.isFinite(numScore)) {
+        return numScore;
+      }
+      return null;
+    };
+
     // Create data structure for chart
     const chartData: any[] = sortedMonths.map(month => {
       const dataPoint: any = {
@@ -1652,18 +1729,7 @@ export function Teams() {
         const modeData = userModePerformanceData[modeName];
         if (modeData?.monthly_scores) {
           const monthlyScore = modeData.monthly_scores.find((s: any) => s.month === month);
-          
-          if (monthlyScore) {
-            if (typeof monthlyScore.average_overall_score === 'number') {
-              dataPoint[modeName] = monthlyScore.average_overall_score;
-            } else if (monthlyScore.session_count !== undefined && monthlyScore.session_count === 0) {
-              dataPoint[modeName] = 0;
-            } else {
-              dataPoint[modeName] = null;
-            }
-          } else {
-            dataPoint[modeName] = null;
-          }
+          dataPoint[modeName] = getValidScore(monthlyScore);
         } else {
           dataPoint[modeName] = null;
         }
@@ -1672,6 +1738,50 @@ export function Teams() {
       return dataPoint;
     });
 
+    // Handle null values for each mode:
+    // 1. Find if mode has any valid scores
+    // 2. If it has at least one score:
+    //    - Nulls BEFORE first score → Set to 0 (shows growth from bottom)
+    //    - Nulls AFTER first score → Carry forward last valid score
+    // 3. If all nulls (no scores ever) → Keep as null (no line rendered)
+    ['prospecting', 'discovering', 'closing'].forEach((modeName) => {
+      // First, check if this mode has any valid scores at all
+      const hasAnyScore = chartData.some((dp: any) => 
+        dp[modeName] !== null && dp[modeName] !== undefined
+      );
+      
+      // If no scores at all, leave everything as null (line won't render)
+      if (!hasAnyScore) {
+        return;
+      }
+      
+      // Find the index of the first valid score
+      const firstScoreIndex = chartData.findIndex((dp: any) => 
+        dp[modeName] !== null && dp[modeName] !== undefined
+      );
+      
+      // Set all nulls BEFORE first score to 0 (shows growth from bottom)
+      for (let i = 0; i < firstScoreIndex; i++) {
+        if (chartData[i][modeName] === null || chartData[i][modeName] === undefined) {
+          chartData[i][modeName] = 0;
+        }
+      }
+      
+      // Forward-fill nulls AFTER first score with last valid score
+      let lastValidScore: number | null = null;
+      for (let i = firstScoreIndex; i < chartData.length; i++) {
+        const currentValue = chartData[i][modeName];
+        
+        if (currentValue !== null && currentValue !== undefined) {
+          lastValidScore = currentValue;
+        } else if (lastValidScore !== null) {
+          // Gap after growth started - carry forward previous score
+          chartData[i][modeName] = lastValidScore;
+        }
+      }
+    });
+
+    console.log("User chart data after processing:", chartData);
     return chartData;
   };
 
@@ -2131,6 +2241,28 @@ export function Teams() {
                             const isSelected = selectedGraphMember === memberKey;
                             const opacity = isSelected ? 1 : selectedGraphMember ? 0.3 : 1;
                             
+                            // Custom dot renderer that hides dots for null/undefined values
+                            const renderDot = (props: any) => {
+                              const { cx, cy, payload } = props;
+                              const value = payload[memberKey];
+                              // Don't render dot if value is null/undefined
+                              if (value === null || value === undefined) {
+                                return null;
+                              }
+                              return (
+                                <circle
+                                  key={`dot-${member.member_id}-${payload.month}`}
+                                  cx={cx}
+                                  cy={cy}
+                                  r={isSelected ? 7 : 6}
+                                  fill={color}
+                                  stroke={color}
+                                  strokeWidth={2}
+                                  fillOpacity={opacity}
+                                />
+                              );
+                            };
+                            
                             return (
                               <Line
                                 key={member.member_id}
@@ -2140,7 +2272,7 @@ export function Teams() {
                                 stroke={color}
                                 strokeWidth={isSelected ? 4 : 3}
                                 strokeOpacity={opacity}
-                                dot={{ fill: color, strokeWidth: 2, r: isSelected ? 7 : 6, fillOpacity: opacity }}
+                                dot={renderDot}
                                 activeDot={{ r: 8, stroke: color, strokeWidth: 2 }}
                                 isAnimationActive={false}
                                 animationBegin={0}
@@ -3405,39 +3537,57 @@ export function Teams() {
                                       className="border-border hover:border-yellow-200 hover:shadow-lg transition-all duration-300 overflow-hidden"
                                     >
                                       <CardContent className="p-4">
-                                        <div className="flex items-center justify-between gap-4">
-                                          <div className="flex items-center gap-3">
-                                            <div className="p-2 rounded-lg bg-green-50">
-                                              <UserCircle className="h-5 w-5 text-green-600" />
+                                        <div className="space-y-4">
+                                          {/* User Info and Status */}
+                                          <div className="flex items-center justify-between gap-4">
+                                            <div className="flex items-center gap-3">
+                                              <div className="p-2 rounded-lg bg-green-50">
+                                                <UserCircle className="h-5 w-5 text-green-600" />
+                                              </div>
+                                              <div>
+                                                <p className="font-semibold text-black">{user.name || 'Unknown User'}</p>
+                                                {user.email && (
+                                                  <p className="text-sm text-black/60">{user.email}</p>
+                                                )}
+                                              </div>
                                             </div>
-                                            <div>
-                                              <p className="font-semibold text-black">{user.name || 'Unknown User'}</p>
-                                              {user.email && (
-                                                <p className="text-sm text-black/60">{user.email}</p>
-                                              )}
+                                            <div className="flex items-center gap-3">
+                                              <div className="text-right">
+                                                <p className="text-xs font-medium text-black/50">Completed On</p>
+                                                <p className="text-sm font-semibold text-green-600">
+                                                  {user.end_time 
+                                                    ? new Date(user.end_time).toLocaleDateString('en-US', { 
+                                                        weekday: 'short',
+                                                        month: 'short', 
+                                                        day: 'numeric',
+                                                        year: 'numeric'
+                                                      })
+                                                    : "N/A"}
+                                                </p>
+                                              </div>
+                                              <Badge 
+                                                variant="outline"
+                                                className="text-xs font-medium px-3 py-1.5 shrink-0 border-green-300 bg-green-50 text-green-700"
+                                              >
+                                                <CheckCircle className="h-3 w-3 mr-1.5" />
+                                                Completed
+                                              </Badge>
                                             </div>
                                           </div>
-                                          <div className="flex items-center gap-3">
-                                            <div className="text-right">
-                                              <p className="text-xs font-medium text-black/50">Completed On</p>
-                                              <p className="text-sm font-semibold text-green-600">
-                                                {user.end_time 
-                                                  ? new Date(user.end_time).toLocaleDateString('en-US', { 
-                                                      month: 'short', 
-                                                      day: 'numeric',
-                                                      year: 'numeric'
-                                                    })
-                                                  : "N/A"}
-                                              </p>
+
+                                          {/* Performance Button */}
+                                          {user.session_id && (
+                                            <div className="pt-3 border-t border-border/50">
+                                              <Button
+                                                variant="outline"
+                                                onClick={(e) => handleViewPerformance(user.session_id, e)}
+                                                className="w-full bg-yellow-50 hover:bg-yellow-100 border-border text-black"
+                                              >
+                                                <BarChart3 className="h-4 w-4 mr-2" />
+                                                Performance
+                                              </Button>
                                             </div>
-                                            <Badge 
-                                              variant="outline"
-                                              className="text-xs font-medium px-3 py-1.5 shrink-0 border-green-300 bg-green-50 text-green-700"
-                                            >
-                                              <CheckCircle className="h-3 w-3 mr-1.5" />
-                                              Completed
-                                            </Badge>
-                                          </div>
+                                          )}
                                         </div>
                                       </CardContent>
                                     </Card>
@@ -4607,7 +4757,11 @@ export function Teams() {
                         name="Prospecting"
                         stroke="#f59e0b"
                         strokeWidth={3}
-                        dot={{ fill: '#f59e0b', strokeWidth: 2, r: 6 }}
+                        dot={(props: any) => {
+                          const { cx, cy, payload } = props;
+                          if (payload.prospecting === null || payload.prospecting === undefined) return null;
+                          return <circle key={`dot-prospecting-${payload.month}`} cx={cx} cy={cy} r={6} fill="#f59e0b" stroke="#f59e0b" strokeWidth={2} />;
+                        }}
                         activeDot={{ r: 8, stroke: '#f59e0b', strokeWidth: 2 }}
                         connectNulls={true}
                       />
@@ -4617,7 +4771,11 @@ export function Teams() {
                         name="Discovering"
                         stroke="#22c55e"
                         strokeWidth={3}
-                        dot={{ fill: '#22c55e', strokeWidth: 2, r: 6 }}
+                        dot={(props: any) => {
+                          const { cx, cy, payload } = props;
+                          if (payload.discovering === null || payload.discovering === undefined) return null;
+                          return <circle key={`dot-discovering-${payload.month}`} cx={cx} cy={cy} r={6} fill="#22c55e" stroke="#22c55e" strokeWidth={2} />;
+                        }}
                         activeDot={{ r: 8, stroke: '#22c55e', strokeWidth: 2 }}
                         connectNulls={true}
                       />
@@ -4627,7 +4785,11 @@ export function Teams() {
                         name="Closing"
                         stroke="#ef4444"
                         strokeWidth={3}
-                        dot={{ fill: '#ef4444', strokeWidth: 2, r: 6 }}
+                        dot={(props: any) => {
+                          const { cx, cy, payload } = props;
+                          if (payload.closing === null || payload.closing === undefined) return null;
+                          return <circle key={`dot-closing-${payload.month}`} cx={cx} cy={cy} r={6} fill="#ef4444" stroke="#ef4444" strokeWidth={2} />;
+                        }}
                         activeDot={{ r: 8, stroke: '#ef4444', strokeWidth: 2 }}
                         connectNulls={true}
                       />
