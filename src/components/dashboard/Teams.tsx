@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Users, Plus, Minus, ChevronDown, Building2, TrendingUp, Calendar, User, BarChart3, Search, X, ArrowLeft, Check, Edit, Trash2, Info, Briefcase, MapPin, Factory, Building, Package, Sparkles, Target, CheckCircle, Clock, Percent, AlertCircle, UserCircle, FileText, MessageSquare, Lightbulb, Upload, Loader2, Share2 } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
 import { apis } from "@/utils/apis";
 import { useApi } from "@/hooks/useApi";
 import { useSelector } from "react-redux";
@@ -1612,6 +1612,8 @@ export function Teams() {
         };
         
         dataPoint[memberKey] = getValidScore(monthlyScore);
+        // Store session count with a special key
+        dataPoint[`${memberKey}_sessions`] = monthlyScore?.session_count || 0;
       });
 
       return dataPoint;
@@ -1730,8 +1732,11 @@ export function Teams() {
         if (modeData?.monthly_scores) {
           const monthlyScore = modeData.monthly_scores.find((s: any) => s.month === month);
           dataPoint[modeName] = getValidScore(monthlyScore);
+          // Store session count with a special key
+          dataPoint[`${modeName}_sessions`] = monthlyScore?.session_count || 0;
         } else {
           dataPoint[modeName] = null;
+          dataPoint[`${modeName}_sessions`] = 0;
         }
       });
 
@@ -2217,11 +2222,82 @@ export function Teams() {
                   <>
                     <div className="h-80" onClick={() => setSelectedGraphMember(null)}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={growthData}>
+                    <LineChart data={growthData} margin={{ right: 30 }}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis dataKey="month" className="text-muted-foreground" />
-                      <YAxis domain={[0, 100]} className="text-muted-foreground" />
-                      <RechartsTooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }} />
+                      <YAxis domain={[0, 100]} className="text-muted-foreground" width={40} />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            return (
+                              <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
+                                <p className="font-semibold mb-2">{label}</p>
+                                {payload.map((entry: any, index: number) => {
+                                  const memberName = entry.name;
+                                  const score = entry.value;
+                                  const sessionCount = entry.payload[`${memberName}_sessions`] || 0;
+                                  
+                                  return (
+                                    <div key={index} className="flex items-center gap-2 mb-1">
+                                      <div 
+                                        className="w-3 h-3 rounded-full" 
+                                        style={{ backgroundColor: entry.color }}
+                                      />
+                                      <span className="text-sm">
+                                        {memberName}: <span className="font-semibold">{score?.toFixed(1)}%</span>
+                                        <span className="text-muted-foreground ml-1">({sessionCount} session{sessionCount !== 1 ? 's' : ''})</span>
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <ReferenceLine 
+                        y={70} 
+                        stroke="#f59e0b" 
+                        strokeDasharray="5 5" 
+                        strokeWidth={2}
+                        label={{ 
+                          value: '70', 
+                          position: 'left', 
+                          fill: '#f59e0b', 
+                          fontSize: 12, 
+                          fontWeight: 600
+                        }}
+                      />
+                      <ReferenceLine 
+                        y={85} 
+                        stroke="#22c55e" 
+                        strokeDasharray="5 5" 
+                        strokeWidth={2}
+                        label={{ 
+                          value: '85', 
+                          position: 'left', 
+                          fill: '#22c55e', 
+                          fontSize: 12, 
+                          fontWeight: 600
+                        }}
+                      />
+                      <Legend 
+                        wrapperStyle={{ paddingTop: '20px' }}
+                        content={() => (
+                          <div className="flex justify-center gap-6 mt-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-0.5 border-t-2 border-dashed" style={{ borderColor: '#f59e0b' }}></div>
+                              <span className="text-sm font-medium" style={{ color: '#f59e0b' }}>Sufficiency</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-0.5 border-t-2 border-dashed" style={{ borderColor: '#22c55e' }}></div>
+                              <span className="text-sm font-medium" style={{ color: '#22c55e' }}>Proficiency</span>
+                            </div>
+                          </div>
+                        )}
+                      />
                           {teamMembersGraph.members.map((member: any, index: number) => {
                             const memberKey = member.user_name || `Member ${member.member_id}`;
                             // Generate colors for each member - using a diverse color palette
@@ -4746,11 +4822,82 @@ export function Teams() {
               <>
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={userGrowthData}>
+                    <LineChart data={userGrowthData} margin={{ right: 30 }}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis dataKey="month" className="text-muted-foreground" />
-                      <YAxis domain={[0, 100]} className="text-muted-foreground" />
-                      <RechartsTooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }} />
+                      <YAxis domain={[0, 100]} className="text-muted-foreground" width={40} />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            return (
+                              <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
+                                <p className="font-semibold mb-2">{label}</p>
+                                {payload.map((entry: any, index: number) => {
+                                  const modeName = entry.name;
+                                  const score = entry.value;
+                                  const sessionCount = entry.payload[`${entry.dataKey}_sessions`] || 0;
+                                  
+                                  return (
+                                    <div key={index} className="flex items-center gap-2 mb-1">
+                                      <div 
+                                        className="w-3 h-3 rounded-full" 
+                                        style={{ backgroundColor: entry.color }}
+                                      />
+                                      <span className="text-sm">
+                                        {modeName}: <span className="font-semibold">{score?.toFixed(1)}%</span>
+                                        <span className="text-muted-foreground ml-1">({sessionCount} session{sessionCount !== 1 ? 's' : ''})</span>
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <ReferenceLine 
+                        y={70} 
+                        stroke="#f59e0b" 
+                        strokeDasharray="5 5" 
+                        strokeWidth={2}
+                        label={{ 
+                          value: '70', 
+                          position: 'left', 
+                          fill: '#f59e0b', 
+                          fontSize: 12, 
+                          fontWeight: 600
+                        }}
+                      />
+                      <ReferenceLine 
+                        y={85} 
+                        stroke="#22c55e" 
+                        strokeDasharray="5 5" 
+                        strokeWidth={2}
+                        label={{ 
+                          value: '85', 
+                          position: 'left', 
+                          fill: '#22c55e', 
+                          fontSize: 12, 
+                          fontWeight: 600
+                        }}
+                      />
+                      <Legend 
+                        wrapperStyle={{ paddingTop: '20px' }}
+                        content={() => (
+                          <div className="flex justify-center gap-6 mt-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-0.5 border-t-2 border-dashed" style={{ borderColor: '#f59e0b' }}></div>
+                              <span className="text-sm font-medium" style={{ color: '#f59e0b' }}>Sufficiency</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-0.5 border-t-2 border-dashed" style={{ borderColor: '#22c55e' }}></div>
+                              <span className="text-sm font-medium" style={{ color: '#22c55e' }}>Proficiency</span>
+                            </div>
+                          </div>
+                        )}
+                      />
                       <Line
                         type="monotone"
                         dataKey="prospecting"
