@@ -11,6 +11,7 @@ import { Personas } from "@/components/dashboard/Personas";
 import { ManagerProfile } from "@/components/dashboard/ManagerProfile";
 import { Company } from "@/components/dashboard/Company";
 import { Teams } from "@/components/dashboard/Teams";
+import { ScenarioLibrary } from "@/components/dashboard/ScenarioLibrary";
 import { AssignedScenarios } from "@/components/dashboard/AssignedScenarios";
 import { MyFeedback } from "@/components/dashboard/MyFeedback";
 import Subscription from "@/components/dashboard/Subscription";
@@ -78,6 +79,11 @@ export default function Dashboard() {
                 <Route path="/manager/teams" element={
                   <SubscriptionGuard requiredPlan="manager" feature="Team management">
                     <Teams />
+                  </SubscriptionGuard>
+                } />
+                <Route path="/manager/scenario-library" element={
+                  <SubscriptionGuard requiredPlan="manager" feature="Scenario library">
+                    <ScenarioLibrary />
                   </SubscriptionGuard>
                 } />
                 {/* Subscription Route */}

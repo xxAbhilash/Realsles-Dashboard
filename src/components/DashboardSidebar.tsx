@@ -10,6 +10,7 @@ import {
   CreditCard,
   ClipboardList,
   ThumbsUp,
+  BookOpen,
 } from "lucide-react";
 import {
   Sidebar,
@@ -55,6 +56,7 @@ const getSalesManagerItems = (user: UserData) => {
     { title: "Personas Used", url: "/personas", icon: Users },
     { title: "Company", url: "/manager/company", icon: Building2 },
     { title: "Teams", url: "/manager/teams", icon: Users },
+    { title: "Scenario Library", url: "/manager/scenario-library", icon: BookOpen },
     { title: "My Feedback", url: "/my-feedback", icon: ThumbsUp }
   ];
 

@@ -2159,18 +2159,6 @@ export function Teams() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button
-                        title="Assign Scenario"
-                        variant="outline"
-                        size="sm"
-                        className="text-black hover:text-black"
-                        onClick={(e) => { 
-                          e.stopPropagation(); 
-                          handleGiveScenario(member); 
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                      </Button>
                     <Button
                       title="Delete"
                       variant="outline"
@@ -2739,13 +2727,6 @@ export function Teams() {
                               setIsScenarioUsersDialogOpen(true);
                             };
 
-                            const handleShareClick = (e: React.MouseEvent) => {
-                              e.stopPropagation();
-                              if (firstSessionId) {
-                                handleShareScenario({ session_id: firstSessionId, ...scenario });
-                              }
-                            };
-
                             const handleDeleteClick = (e: React.MouseEvent) => {
                               e.stopPropagation();
                               if (firstSessionId) {
@@ -2793,33 +2774,7 @@ export function Teams() {
                                     >
                                       {pendingOverdueCount} Pending/Overdue
                                     </Badge>
-                                    {firstSessionId && (
-                                      <div className="flex items-center gap-1">
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={handleShareClick}
-                                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 h-8 w-8 p-0"
-                                          title="Share scenario"
-                                          disabled={sharingSessionIdState === firstSessionId}
-                                        >
-                                          {sharingSessionIdState === firstSessionId ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                          ) : (
-                                            <Share2 className="h-4 w-4" />
-                                          )}
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={handleDeleteClick}
-                                          className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8 p-0"
-                                          title="Delete scenario"
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                      </div>
-                                    )}
+                                    {/* Delete scenario button removed in scenarios section */}
                                   </div>
                                 </div>
                               </div>
@@ -2969,35 +2924,7 @@ export function Teams() {
                                                         )}
                                                       </Badge>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                      {scenario.session_id && (
-                                                        <>
-                                                          <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => handleShareScenario(scenario)}
-                                                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                                            title="Share scenario"
-                                                            disabled={sharingSessionIdState === scenario.session_id}
-                                                          >
-                                                            {sharingSessionIdState === scenario.session_id ? (
-                                                              <Loader2 className="h-4 w-4 animate-spin" />
-                                                            ) : (
-                                                              <Share2 className="h-4 w-4" />
-                                                            )}
-                                                          </Button>
-                                                          <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => openDeleteScenarioDialog(scenario.session_id)}
-                                                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                            title="Delete scenario"
-                                                          >
-                                                            <Trash2 className="h-4 w-4" />
-                                                          </Button>
-                                                        </>
-                                                      )}
-                                                    </div>
+                                                    {/* Delete scenario button removed in scenarios section */}
                                                   </div>
 
                                                   {/* Information Section */}
@@ -3180,35 +3107,7 @@ export function Teams() {
                                                       Completed
                                                     </Badge>
                                                   </div>
-                                                  <div className="flex items-center gap-2">
-                                                    {scenario.session_id && (
-                                                      <>
-                                                        <Button
-                                                          variant="ghost"
-                                                          size="sm"
-                                                          onClick={() => handleShareScenario(scenario)}
-                                                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                                          title="Share scenario"
-                                                          disabled={sharingSessionIdState === scenario.session_id}
-                                                        >
-                                                          {sharingSessionIdState === scenario.session_id ? (
-                                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                                          ) : (
-                                                            <Share2 className="h-4 w-4" />
-                                                          )}
-                                                        </Button>
-                                                        <Button
-                                                          variant="ghost"
-                                                          size="sm"
-                                                          onClick={() => openDeleteScenarioDialog(scenario.session_id)}
-                                                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                          title="Delete scenario"
-                                                        >
-                                                          <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                      </>
-                                                    )}
-                                                  </div>
+                                                  {/* Delete scenario button removed in scenarios section */}
                                                 </div>
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3">
                                                   <div className="flex items-start gap-3">

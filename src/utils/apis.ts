@@ -20,4 +20,6 @@ export const apis = {
   ,scenarios_by_team: "/v1/scenarios/team/" // Usage: /v1/scenarios/team/{team_id}/scenarios
   ,performance_report: "/v1/performance-reports/" // Get performance report by session_id
   ,documents_upload: "/v1/documents/upload" // Upload and process document
+  ,scenarios_library: "/v1/scenarios/library" // Get all scenarios for the scenario library
+  ,scenarios_assign: "/v1/scenarios" // Assign: POST /v1/scenarios/{scenario_id}/assign/{session_id}
 };
