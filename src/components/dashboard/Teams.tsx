@@ -740,8 +740,9 @@ export function Teams() {
   const handleGiveScenario = async (member: any) => {
     setSelectedMemberForScenario(member);
     setSharingSessionId(null); // Reset sharing session ID when assigning new scenario
+    const userId = member?.user?.user_id ?? member?.user_id;
+    setSelectedAdditionalMembers(userId != null ? [userId] : []); // Auto-select this user in step 2 (same as Scenario Library, with one user pre-selected)
     setIsAssignScenarioDialogOpen(true);
-    // Fetch modes and personas when dialog opens
     await fetchModesAndPersonas();
   }
 
@@ -986,22 +987,10 @@ export function Teams() {
       return;
     }
 
-    // Get all members to assign to (original + additional)
-    // Use allTeamMembers when sharing, otherwise use teamMembers
     const membersSource = sharingSessionId ? allTeamMembers : teamMembers;
-    
-    // Get members from selected user IDs
-    const additionalMembers = selectedAdditionalMembers.map(userId => {
-      return membersSource.find((m: any) => (m?.user?.user_id || m?.user_id) === userId);
-    }).filter(Boolean);
-
-    // Combine with originally selected member (if any)
-    const allMembersRaw = [
-      selectedMemberForScenario,
-      ...additionalMembers
-    ].filter(Boolean);
-
-    // Deduplicate by user_id (same user might appear in multiple teams)
+    const allMembersRaw = selectedAdditionalMembers
+      .map((userId) => membersSource.find((m: any) => (m?.user?.user_id || m?.user_id) === userId))
+      .filter(Boolean);
     const seenUserIds = new Set<number>();
     const allMembers = allMembersRaw.filter((member: any) => {
       const userId = member?.user?.user_id || member?.user_id;
@@ -1021,8 +1010,29 @@ export function Teams() {
     const successMembers: string[] = [];
     const failedMembers: string[] = [];
 
+    const scenarioText = scenarioData.description.trim();
+    const docContent = documentSummary?.trim() || "";
+
     try {
-      // Process each member sequentially
+      // Same as Scenario Library: create one scenario, then for each user create session + assign
+      const createPayload = {
+        persona_id: scenarioData.persona,
+        mode_id: scenarioData.mode,
+        title: scenarioData.title.trim(),
+        scenario_text: scenarioText,
+        document_content: docContent,
+        time_limit_days: scenarioData.timeLimit,
+        message: scenarioData.message?.trim() || ""
+      };
+      const createRes = await Post(apis.scenarios, createPayload);
+      const scenarioIdToUse = (createRes as any)?.scenario_id ?? (createRes as any)?.id;
+      if (!scenarioIdToUse) {
+        showToast.error("Failed to create scenario: no scenario_id returned");
+        setIsAssigningScenario(false);
+        return;
+      }
+      const scenarioIdStr = String(scenarioIdToUse);
+
       for (const member of allMembers) {
         try {
           const userId = member?.user?.user_id || member?.user_id;
@@ -1030,44 +1040,23 @@ export function Teams() {
             failedMembers.push(member?.user?.first_name || "Unknown");
             continue;
           }
-
-          // Always create a new session for each member (even when sharing)
-          // This ensures the scenario is associated with the correct user/team
-          const sessionPayload: any = {
+          const sessionPayload = {
             user_id: userId.toString(),
             persona_id: scenarioData.persona,
             mode_id: scenarioData.mode,
-            scenario: scenarioData.description.trim()
+            scenario_id: scenarioIdStr,
+            scenario_text: scenarioText,
+            document_content: docContent
           };
-
-          // Add document_content if document summary exists
-          if (documentSummary && documentSummary.trim()) {
-            sessionPayload.document_content = documentSummary.trim();
-          }
-
           const sessionResponse = await Post(apis.sessions_manager_create, sessionPayload);
-          
           if (!sessionResponse?.session_id) {
             throw new Error("Session creation failed - no session_id returned");
           }
+          const assignUrl = `${apis.scenarios_assign}/${scenarioIdStr}/assign/${sessionResponse.session_id}`;
+          await Post(assignUrl, {});
 
-          const sessionIdToUse = sessionResponse.session_id;
-
-          // Step 2: Create scenario
-          const scenarioPayload = {
-            session_id: sessionIdToUse,
-            manager_id: user.user_id.toString(),
-            title: scenarioData.title.trim(),
-            time_limit_days: scenarioData.timeLimit,
-            message: scenarioData.message?.trim() || ""
-          };
-
-          await Post(apis.scenarios, scenarioPayload);
-
-          // Track success
           const memberName = `${member?.user?.first_name || ""} ${member?.user?.last_name || ""}`.trim() || "Unknown";
           successMembers.push(memberName);
-
         } catch (error: any) {
           console.error("Error assigning scenario to member:", error);
           const memberName = `${member?.user?.first_name || ""} ${member?.user?.last_name || ""}`.trim() || "Unknown";
@@ -2159,6 +2148,18 @@ export function Teams() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                    <Button
+                      title="Assign scenario"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleGiveScenario(member);
+                      }}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
                     <Button
                       title="Delete"
                       variant="outline"

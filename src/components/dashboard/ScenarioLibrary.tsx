@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, type ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -122,6 +122,96 @@ const formatText = (text?: string) => {
     .replace(/\b\w/g, (l) => l.toUpperCase());
 };
 
+/** Removes curly braces before sending to the backend; UI keeps braces for highlight. */
+const stripCurlyBraces = (str: string) => (str ?? "").replace(/\{|\}/g, "");
+
+/**
+ * Splits scenario text and returns React nodes with only properly balanced
+ * {...} pairs highlighted in light yellow. Unclosed { or } are shown as plain
+ * so that other balanced pairs later in the text still get highlighted.
+ */
+const scenarioTextWithHighlights = (text: string): ReactNode => {
+  if (text == null || text === "") return null;
+  const parts: React.ReactNode[] = [];
+  let key = 0;
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "{") {
+      let depth = 1;
+      const start = i;
+      i += 1;
+      while (i < text.length && depth > 0) {
+        if (text[i] === "{") depth += 1;
+        else if (text[i] === "}") depth -= 1;
+        i += 1;
+      }
+      if (depth === 0) {
+        parts.push(
+          <span key={key++} className="bg-yellow-100 rounded px-0.5">
+            {text.slice(start, i)}
+          </span>
+        );
+      } else {
+        parts.push(<span key={key++}>{text[start]}</span>);
+        i = start + 1;
+      }
+      continue;
+    }
+    let plainStart = i;
+    while (i < text.length && text[i] !== "{") i += 1;
+    if (i > plainStart) {
+      parts.push(<span key={key++}>{text.slice(plainStart, i)}</span>);
+    }
+  }
+  return parts.length ? parts : text;
+};
+
+const PLACEHOLDER_SCENARIO = "Describe the scenario...";
+
+function getCursorOffset(container: HTMLElement): number {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return 0;
+  const range = sel.getRangeAt(0);
+  if (!container.contains(range.startContainer)) return 0;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  let count = 0;
+  let node: Node | null = walker.nextNode();
+  while (node) {
+    if (node === range.startContainer) return count + range.startOffset;
+    count += node.textContent?.length ?? 0;
+    node = walker.nextNode();
+  }
+  return count;
+}
+
+function restoreCursor(container: HTMLElement, offset: number): void {
+  const sel = window.getSelection();
+  if (!sel) return;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  let count = 0;
+  let node: Node | null = walker.nextNode();
+  while (node) {
+    const len = node.textContent?.length ?? 0;
+    if (count + len >= offset) {
+      sel.removeAllRanges();
+      const range = document.createRange();
+      const o = Math.min(offset - count, len);
+      range.setStart(node, o);
+      range.setEnd(node, o);
+      sel.addRange(range);
+      return;
+    }
+    count += len;
+    node = walker.nextNode();
+  }
+  sel.removeAllRanges();
+  const range = document.createRange();
+  range.selectNodeContents(container);
+  range.collapse(true);
+  sel.addRange(range);
+}
+
 /** Badge for scenario creator role: only super_admin → System Scenario (light orange). */
 const getCreatorRoleBadge = (scenario: ScenarioItem): { label: string; className: string } | null => {
   const role =
@@ -198,6 +288,8 @@ export function ScenarioLibrary() {
   const [shareDocumentSource, setShareDocumentSource] = useState<"existing" | "new" | null>(null);
   const [shareUploadedFile, setShareUploadedFile] = useState<File | null>(null);
   const [shareDocumentUploading, setShareDocumentUploading] = useState(false);
+  const scenarioTextEditableRef = useRef<HTMLDivElement>(null);
+  const scenarioTextCursorRef = useRef<number | null>(null);
 
   // Delete team scenario
   const [scenarioToDelete, setScenarioToDelete] = useState<ScenarioItem | null>(null);
@@ -514,10 +606,10 @@ export function ScenarioLibrary() {
           persona_id: shareForm.persona_id,
           mode_id: shareForm.mode_id,
           title,
-          scenario_text: scenarioText,
+          scenario_text: stripCurlyBraces(scenarioText),
           document_content: docContent,
           time_limit_days: shareForm.time_limit_days ?? 7,
-          message,
+          message: stripCurlyBraces(message),
         };
         const createRes = await Post(apis.scenarios, createPayload);
         const newId = (createRes as any)?.scenario_id ?? (createRes as any)?.id;
@@ -557,7 +649,7 @@ export function ScenarioLibrary() {
           persona_id: shareForm.persona_id,
           mode_id: shareForm.mode_id,
           scenario_id: scenarioIdToUse,
-          scenario_text: scenarioText,
+          scenario_text: stripCurlyBraces(scenarioText),
           document_content: docContent,
         };
         const sessionRes = await Post(apis.sessions_manager_create, sessionPayload);
@@ -586,6 +678,14 @@ export function ScenarioLibrary() {
       showToast.error(`Failed to share with: ${failedNames.join(", ")}`);
     }
   };
+
+  useEffect(() => {
+    const pending = scenarioTextCursorRef.current;
+    if (pending === null) return;
+    scenarioTextCursorRef.current = null;
+    const el = scenarioTextEditableRef.current;
+    if (el) restoreCursor(el, pending);
+  }, [shareForm.scenario_text]);
 
   // ──────────────────────────────────────────────────────
   // Derived data (filters / stats)
@@ -968,6 +1068,7 @@ export function ScenarioLibrary() {
             View and manage all assigned scenarios across your teams
           </p>
         </div>
+        {/* Create Scenario button — no longer required; commented out
         <div className="flex items-center">
           <Button
             variant="default"
@@ -978,6 +1079,7 @@ export function ScenarioLibrary() {
             <span className="text-sm md:text-base font-semibold">Create Scenario</span>
           </Button>
         </div>
+        */}
       </div>
 
       {/* Loading State */}
@@ -1493,12 +1595,24 @@ export function ScenarioLibrary() {
               </div>
               <div className="space-y-2">
                 <Label>Scenario text <span className="text-destructive">*</span></Label>
-                <Textarea
-                  value={shareForm.scenario_text}
-                  onChange={(e) => setShareForm((p) => ({ ...p, scenario_text: e.target.value }))}
-                  placeholder="Describe the scenario..."
-                  className="min-h-[120px] resize-none"
-                />
+                <div
+                  ref={scenarioTextEditableRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm whitespace-pre-wrap overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-text"
+                  onInput={(e) => {
+                    const el = e.currentTarget;
+                    let text = el.innerText ?? "";
+                    if (text === PLACEHOLDER_SCENARIO) text = "";
+                    else if (text.startsWith(PLACEHOLDER_SCENARIO)) text = text.slice(PLACEHOLDER_SCENARIO.length);
+                    scenarioTextCursorRef.current = getCursorOffset(el);
+                    setShareForm((p) => ({ ...p, scenario_text: text }));
+                  }}
+                >
+                  {scenarioTextWithHighlights(shareForm.scenario_text) ?? (
+                    <span className="text-muted-foreground">{PLACEHOLDER_SCENARIO}</span>
+                  )}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Message (optional)</Label>
