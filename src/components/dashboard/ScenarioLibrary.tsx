@@ -170,49 +170,6 @@ const scenarioTextWithHighlights = (text: string): ReactNode => {
 const PLACEHOLDER_SCENARIO = "Describe the scenario...";
 const PLACEHOLDER_MESSAGE = "Message for the assigned users...";
 
-function getCursorOffset(container: HTMLElement): number {
-  const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0) return 0;
-  const range = sel.getRangeAt(0);
-  if (!container.contains(range.startContainer)) return 0;
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
-  let count = 0;
-  let node: Node | null = walker.nextNode();
-  while (node) {
-    if (node === range.startContainer) return count + range.startOffset;
-    count += node.textContent?.length ?? 0;
-    node = walker.nextNode();
-  }
-  return count;
-}
-
-function restoreCursor(container: HTMLElement, offset: number): void {
-  const sel = window.getSelection();
-  if (!sel) return;
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
-  let count = 0;
-  let node: Node | null = walker.nextNode();
-  while (node) {
-    const len = node.textContent?.length ?? 0;
-    if (count + len >= offset) {
-      sel.removeAllRanges();
-      const range = document.createRange();
-      const o = Math.min(offset - count, len);
-      range.setStart(node, o);
-      range.setEnd(node, o);
-      sel.addRange(range);
-      return;
-    }
-    count += len;
-    node = walker.nextNode();
-  }
-  sel.removeAllRanges();
-  const range = document.createRange();
-  range.selectNodeContents(container);
-  range.collapse(true);
-  sel.addRange(range);
-}
-
 /** Badge for scenario creator role: only super_admin → System Scenario (light orange). */
 const getCreatorRoleBadge = (scenario: ScenarioItem): { label: string; className: string } | null => {
   const role =
@@ -295,10 +252,6 @@ export function ScenarioLibrary() {
   const [shareDocumentSource, setShareDocumentSource] = useState<"existing" | "new" | null>(null);
   const [shareUploadedFile, setShareUploadedFile] = useState<File | null>(null);
   const [shareDocumentUploading, setShareDocumentUploading] = useState(false);
-  const scenarioTextEditableRef = useRef<HTMLDivElement>(null);
-  const scenarioTextCursorRef = useRef<number | null>(null);
-  const messageEditableRef = useRef<HTMLDivElement>(null);
-  const messageCursorRef = useRef<number | null>(null);
 
   // Detail edit state
   const [isDetailEditing, setIsDetailEditing] = useState(false);
@@ -698,21 +651,6 @@ export function ScenarioLibrary() {
     }
   };
 
-  useEffect(() => {
-    const pending = scenarioTextCursorRef.current;
-    if (pending === null) return;
-    scenarioTextCursorRef.current = null;
-    const el = scenarioTextEditableRef.current;
-    if (el) restoreCursor(el, pending);
-  }, [shareForm.scenario_text]);
-
-  useEffect(() => {
-    const pending = messageCursorRef.current;
-    if (pending === null) return;
-    messageCursorRef.current = null;
-    const el = messageEditableRef.current;
-    if (el) restoreCursor(el, pending);
-  }, [shareForm.message]);
 
   // ──────────────────────────────────────────────────────
   // Derived data (filters / stats)
@@ -1824,44 +1762,44 @@ export function ScenarioLibrary() {
               </div>
               <div className="space-y-2">
                 <Label>Scenario text <span className="text-destructive">*</span></Label>
-                <div
-                  ref={scenarioTextEditableRef}
-                  contentEditable
-                  suppressContentEditableWarning
-                  className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm whitespace-pre-wrap overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-text"
-                  onInput={(e) => {
-                    const el = e.currentTarget;
-                    let text = el.innerText ?? "";
-                    if (text === PLACEHOLDER_SCENARIO) text = "";
-                    else if (text.startsWith(PLACEHOLDER_SCENARIO)) text = text.slice(PLACEHOLDER_SCENARIO.length);
-                    scenarioTextCursorRef.current = getCursorOffset(el);
-                    setShareForm((p) => ({ ...p, scenario_text: text }));
-                  }}
-                >
-                  {scenarioTextWithHighlights(shareForm.scenario_text) ?? (
-                    <span className="text-muted-foreground">{PLACEHOLDER_SCENARIO}</span>
-                  )}
+                <div className="relative">
+                  {/* Highlighted background layer */}
+                  <div className="absolute inset-0 w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm whitespace-pre-wrap overflow-hidden pointer-events-none">
+                    {shareForm.scenario_text ? (
+                      scenarioTextWithHighlights(shareForm.scenario_text)
+                    ) : (
+                      <span className="text-muted-foreground">{PLACEHOLDER_SCENARIO}</span>
+                    )}
+                  </div>
+                  {/* Transparent textarea overlay */}
+                  <Textarea
+                    value={shareForm.scenario_text}
+                    onChange={(e) => setShareForm((p) => ({ ...p, scenario_text: e.target.value }))}
+                    placeholder={PLACEHOLDER_SCENARIO}
+                    className="min-h-[120px] resize-none relative bg-transparent text-transparent caret-black selection:bg-primary/30"
+                    style={{ caretColor: 'black' }}
+                  />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Message (optional)</Label>
-                <div
-                  ref={messageEditableRef}
-                  contentEditable
-                  suppressContentEditableWarning
-                  className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm whitespace-pre-wrap overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-text"
-                  onInput={(e) => {
-                    const el = e.currentTarget;
-                    let text = el.innerText ?? "";
-                    if (text === PLACEHOLDER_MESSAGE) text = "";
-                    else if (text.startsWith(PLACEHOLDER_MESSAGE)) text = text.slice(PLACEHOLDER_MESSAGE.length);
-                    messageCursorRef.current = getCursorOffset(el);
-                    setShareForm((p) => ({ ...p, message: text }));
-                  }}
-                >
-                  {scenarioTextWithHighlights(shareForm.message) ?? (
-                    <span className="text-muted-foreground">{PLACEHOLDER_MESSAGE}</span>
-                  )}
+                <div className="relative">
+                  {/* Highlighted background layer */}
+                  <div className="absolute inset-0 w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm whitespace-pre-wrap overflow-hidden pointer-events-none">
+                    {shareForm.message ? (
+                      scenarioTextWithHighlights(shareForm.message)
+                    ) : (
+                      <span className="text-muted-foreground">{PLACEHOLDER_MESSAGE}</span>
+                    )}
+                  </div>
+                  {/* Transparent textarea overlay */}
+                  <Textarea
+                    value={shareForm.message}
+                    onChange={(e) => setShareForm((p) => ({ ...p, message: e.target.value }))}
+                    placeholder={PLACEHOLDER_MESSAGE}
+                    className="min-h-[80px] resize-none relative bg-transparent text-transparent caret-black selection:bg-primary/30"
+                    style={{ caretColor: 'black' }}
+                  />
                 </div>
               </div>
               {/* Document: existing vs upload new */}
