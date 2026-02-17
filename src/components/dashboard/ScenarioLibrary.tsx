@@ -871,7 +871,7 @@ export function ScenarioLibrary() {
     const modeName = formatText(scenario.mode?.name);
     const roleBadge = getCreatorRoleBadge(scenario);
 
-    return (
+  return (
       <Card
         onClick={() => handleScenarioClick(scenario)}
         className="group cursor-pointer border border-gray-200/80 bg-white shadow-sm hover:shadow-md hover:border-primary/30 transition-all duration-200 rounded-xl overflow-hidden"
@@ -1409,7 +1409,7 @@ export function ScenarioLibrary() {
             )
           ) : (
             /* Empty State */
-            <Card>
+      <Card>
               <CardContent className="p-12">
                 <div className="flex flex-col items-center justify-center gap-4 text-center">
                   <div className="p-4 rounded-full bg-yellow-50 border border-border">
@@ -1437,8 +1437,8 @@ export function ScenarioLibrary() {
                     )}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+        </CardContent>
+      </Card>
           )}
         </>
       )}
