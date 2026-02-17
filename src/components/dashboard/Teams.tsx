@@ -258,6 +258,13 @@ export function Teams() {
   const [selectedUserInfo, setSelectedUserInfo] = useState<{ name: string; email: string; userId: string } | null>(null);
   const [isPendingOverdueScenariosOpen, setIsPendingOverdueScenariosOpen] = useState(false);
   const [isCompletedScenariosOpen, setIsCompletedScenariosOpen] = useState(false);
+  const [libraryScenarios, setLibraryScenarios] = useState<any[]>([]);
+  const [isLoadingLibraryScenarios, setIsLoadingLibraryScenarios] = useState(false);
+  const [libraryScenariosError, setLibraryScenariosError] = useState<string | null>(null);
+  const [librarySearchQuery, setLibrarySearchQuery] = useState("");
+  const [libraryChooserOpen, setLibraryChooserOpen] = useState(false);
+  const [selectedLibraryScenarioId, setSelectedLibraryScenarioId] = useState<string | number | null>(null);
+  const [libraryScenarioSource, setLibraryScenarioSource] = useState<"system" | "custom">("system");
   const [isDeleteScenarioDialogOpen, setIsDeleteScenarioDialogOpen] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<string | number | null>(null);
   const [isPerformanceDialogOpen, setIsPerformanceDialogOpen] = useState(false);
@@ -744,6 +751,7 @@ export function Teams() {
     setSelectedAdditionalMembers(userId != null ? [userId] : []); // Auto-select this user in step 2 (same as Scenario Library, with one user pre-selected)
     setIsAssignScenarioDialogOpen(true);
     await fetchModesAndPersonas();
+    await fetchScenarioLibrary();
   }
 
   const getAllTeamMembers = async () => {
@@ -810,6 +818,8 @@ export function Teams() {
       const { modes: fetchedModes, personas: fetchedPersonas } = await fetchModesAndPersonas();
       // Fetch all team members when sharing
       await getAllTeamMembers();
+      // Also load scenario library so manager can use existing templates
+      await fetchScenarioLibrary();
       
       // Now extract mode and persona IDs with proper fallback to name lookup
       // Try direct ID extraction first
@@ -907,6 +917,130 @@ export function Teams() {
       return { modes: [], personas: [] };
     }
   }
+
+  const fetchScenarioLibrary = async () => {
+    // Avoid refetching if we've already loaded scenarios and there's no explicit error
+    if (libraryScenarios.length > 0 && !libraryScenariosError) return;
+    setIsLoadingLibraryScenarios(true);
+    setLibraryScenariosError(null);
+    try {
+      const response = await Get(apis.scenarios_library);
+      if (Array.isArray(response)) {
+        setLibraryScenarios(response);
+      } else if (response && typeof response === "object") {
+        const data =
+          (response as any).scenarios ||
+          (response as any).data ||
+          (response as any).results ||
+          [];
+        setLibraryScenarios(Array.isArray(data) ? data : []);
+      } else {
+        setLibraryScenarios([]);
+      }
+    } catch (error: any) {
+      console.error("Error fetching scenario library:", error);
+      setLibraryScenarios([]);
+      setLibraryScenariosError(error?.response?.data?.detail || "Failed to load scenario library");
+    } finally {
+      setIsLoadingLibraryScenarios(false);
+    }
+  };
+
+  const applyLibraryScenarioToForm = (scenario: any) => {
+    if (!scenario) return;
+
+    // Extract IDs for persona and mode
+    const modeId =
+      scenario.mode?.mode_id ||
+      scenario.mode?.id ||
+      scenario.mode_id ||
+      "";
+    const personaId =
+      scenario.persona?.persona_id ||
+      scenario.persona?.id ||
+      scenario.persona_id ||
+      "";
+
+    // Scenario text / description
+    const scenarioDescription =
+      scenario.scenario_text ||
+      scenario.scenario ||
+      scenario.description ||
+      scenario.scenario_description ||
+      scenario.details ||
+      "";
+
+    // Title
+    const scenarioTitle =
+      scenario.title ||
+      scenario.scenario_title ||
+      scenario.name ||
+      scenario.scenario ||
+      "Scenario";
+
+    // Manager message
+    const managerMessage =
+      scenario.message ||
+      (scenario as any).manager_message ||
+      (scenario as any).assignment_message ||
+      "";
+
+    // Time limit
+    const timeLimit =
+      typeof scenario.time_limit_days === "number" && scenario.time_limit_days > 0
+        ? scenario.time_limit_days
+        : 7;
+
+    // Document content – mirror the logic from Scenario Library in a simplified way
+    let docContent = "";
+    const mode = scenario.mode as Record<string, unknown> | undefined;
+    const str = (v: unknown): string =>
+      typeof v === "string" && v.trim() ? v.trim() : "";
+    if (mode) {
+      docContent =
+        str(mode.document_content) ||
+        str(mode.content) ||
+        str((mode as any).document) ||
+        str((mode as any).attachment) ||
+        str((scenario as any).document_content) ||
+        "";
+      if (!docContent && mode.documents) {
+        if (typeof mode.documents === "string") {
+          docContent = (mode.documents as string).trim() || "";
+        } else if (Array.isArray(mode.documents) && mode.documents.length > 0) {
+          const first = mode.documents[0];
+          const content = typeof first === "string" ? first : (first as any)?.content;
+          docContent = str(content);
+        }
+      }
+    } else if ((scenario as any).document_content) {
+      docContent = str((scenario as any).document_content);
+    }
+
+    setScenarioData(prev => ({
+      ...prev,
+      mode: modeId ? modeId.toString() : prev.mode,
+      persona: personaId ? personaId.toString() : prev.persona,
+      description: scenarioDescription || prev.description,
+      timeLimit,
+      message: managerMessage || prev.message,
+      title: scenarioTitle
+    }));
+    setDocumentSummary(docContent || "");
+    setSelectedLibraryScenarioId(scenario.scenario_id || scenario.id || null);
+  };
+
+  const isSystemScenarioFromLibrary = (scenario: any): boolean => {
+    const role =
+      (scenario as any).creator_role ??
+      (scenario as any).created_by?.role ??
+      (scenario as any).creator_role_id;
+    let roleStr = typeof role === "string" ? role.toLowerCase() : "";
+    if (!roleStr && typeof role === "number") {
+      roleStr = role === 1 ? "super_admin" : "";
+    }
+    return roleStr === "super_admin";
+  };
 
   const handleProceed = () => {
     if (!scenarioData.title.trim()) {
@@ -3970,22 +4104,27 @@ export function Teams() {
           </AlertDialog>
 
           {/* Assign Scenario Dialog */}
-          <Dialog open={isAssignScenarioDialogOpen} onOpenChange={(open) => {
-            setIsAssignScenarioDialogOpen(open);
-            if (!open) {
-              setSelectedMemberForScenario(null);
-              setScenarioData({ mode: "", persona: "", description: "", timeLimit: 7, message: "", title: "" });
-              setTitleTouched(false);
-              setScenarioStep(1);
-              setSelectedAdditionalMembers([]);
-              setDocumentFile(null);
-              setDocumentSummary("");
-              setIsUploadingDocument(false);
-              setSharingSessionId(null); // Reset sharing session ID when dialog closes
-              setSharingSessionIdState(null); // Reset sharing session ID state when dialog closes
-              setIsLoadingShareScenario(false); // Reset loading state
-            }
-          }}>
+      <Dialog open={isAssignScenarioDialogOpen} onOpenChange={(open) => {
+        setIsAssignScenarioDialogOpen(open);
+        if (!open) {
+          setSelectedMemberForScenario(null);
+          setScenarioData({ mode: "", persona: "", description: "", timeLimit: 7, message: "", title: "" });
+          setTitleTouched(false);
+          setScenarioStep(1);
+          setSelectedAdditionalMembers([]);
+          setDocumentFile(null);
+          setDocumentSummary("");
+          setIsUploadingDocument(false);
+          setSharingSessionId(null); // Reset sharing session ID when dialog closes
+          setSharingSessionIdState(null); // Reset sharing session ID state when dialog closes
+          setIsLoadingShareScenario(false); // Reset loading state
+          setLibraryChooserOpen(false);
+          setLibrarySearchQuery("");
+          setSelectedLibraryScenarioId(null);
+          setLibraryScenariosError(null);
+          setLibraryScenarioSource("system");
+        }
+      }}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader className="pb-4">
                 <DialogTitle className="text-2xl font-bold">
@@ -3994,8 +4133,166 @@ export function Teams() {
               </DialogHeader>
               
               {scenarioStep === 1 ? (
-                // Step 1: Select mode, persona, and write scenario
+                // Step 1: Select mode, persona, and either write a new scenario or start from library
                 <div className="space-y-6 py-2">
+                  <div className="space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <p className="text-sm text-muted-foreground">
+                        Start by writing a new scenario or pick one from your scenario library.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="self-start sm:self-auto gap-2"
+                        onClick={async () => {
+                          const next = !libraryChooserOpen;
+                          setLibraryChooserOpen(next);
+                          if (next) {
+                            await fetchScenarioLibrary();
+                          }
+                        }}
+                      >
+                        <FileText className="h-4 w-4" />
+                        {libraryChooserOpen ? "Hide library" : "Choose from library"}
+                      </Button>
+                    </div>
+                    {libraryChooserOpen && (
+                      <div className="mt-2 space-y-3 border rounded-lg p-3 bg-muted/40">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                          <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              placeholder="Search scenarios by title, persona, or mode..."
+                              value={librarySearchQuery}
+                              onChange={(e) => setLibrarySearchQuery(e.target.value)}
+                              className="pl-9 h-9 text-sm"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1 border border-border rounded-lg p-1 bg-white self-start sm:self-auto">
+                            <button
+                              type="button"
+                              onClick={() => setLibraryScenarioSource("system")}
+                              className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                                libraryScenarioSource === "system"
+                                  ? "bg-yellow-100 text-black"
+                                  : "text-black/40 hover:text-black/70"
+                              }`}
+                            >
+                              System
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setLibraryScenarioSource("custom")}
+                              className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                                libraryScenarioSource === "custom"
+                                  ? "bg-yellow-100 text-black"
+                                  : "text-black/40 hover:text-black/70"
+                              }`}
+                            >
+                              Team / custom
+                            </button>
+                          </div>
+                        </div>
+                        {isLoadingLibraryScenarios ? (
+                          <div className="flex items-center justify-center py-6 text-sm text-muted-foreground gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Loading scenarios...</span>
+                          </div>
+                        ) : libraryScenariosError ? (
+                          <div className="text-sm text-destructive py-3">
+                            {libraryScenariosError}
+                          </div>
+                        ) : libraryScenarios.length === 0 ? (
+                          <div className="text-sm text-muted-foreground py-3">
+                            No scenarios available in your library yet.
+                          </div>
+                        ) : (
+                          <div className="max-h-64 overflow-y-auto">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {libraryScenarios
+                              .filter((s: any) => {
+                                // Source filter: system vs team/custom
+                                const isSystem = isSystemScenarioFromLibrary(s);
+                                if (libraryScenarioSource === "system" && !isSystem) return false;
+                                if (libraryScenarioSource === "custom" && isSystem) return false;
+
+                                // Text search filter
+                                if (!librarySearchQuery.trim()) return true;
+                                const q = librarySearchQuery.toLowerCase();
+                                const title = (s.title || s.scenario || s.scenario_text || s.message || "").toLowerCase();
+                                const personaName = (s.persona?.name || "").toLowerCase();
+                                const modeName = (s.mode?.name || "").toLowerCase();
+                                return (
+                                  title.includes(q) ||
+                                  personaName.includes(q) ||
+                                  modeName.includes(q)
+                                );
+                              })
+                              .map((s: any) => {
+                                const title = s.title || s.scenario || s.scenario_text || s.message || "Scenario";
+                                const personaName = s.persona?.name || "Unknown persona";
+                                const modeName = s.mode?.name || "Unknown mode";
+                                const isSelected =
+                                  selectedLibraryScenarioId != null &&
+                                  (selectedLibraryScenarioId === s.scenario_id || selectedLibraryScenarioId === s.id);
+                                const scenarioPreview =
+                                  (s.scenario_text || s.scenario || s.description || "")
+                                    .toString()
+                                    .slice(0, 140);
+                                return (
+                                  <div
+                                    key={s.scenario_id || s.id}
+                                    className={`group cursor-pointer rounded-xl border bg-white shadow-sm hover:shadow-md transition-all duration-200 ${
+                                      isSelected ? "border-primary bg-primary/5" : "border-gray-200/80 hover:border-primary/40"
+                                    }`}
+                                    onClick={() => applyLibraryScenarioToForm(s)}
+                                  >
+                                    <div className="p-3 flex flex-col h-full">
+                                      <div className="mb-3">
+                                        <h3 className="text-sm font-semibold text-[#1a1a1a] line-clamp-2 group-hover:text-[#0f0f0f]">
+                                          {title}
+                                        </h3>
+                                        {scenarioPreview && (
+                                          <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                                            {scenarioPreview}
+                                            {scenarioPreview.length >= 140 ? "…" : ""}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <div className="mt-auto pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <div className="w-5 h-5 rounded-full bg-gray-100 border border-gray-200/80 flex items-center justify-center flex-shrink-0">
+                                            <UserCircle className="h-3 w-3 text-gray-400" />
+                                          </div>
+                                          <span className="text-xs text-gray-500 truncate">
+                                            {personaName}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 text-[11px] font-medium">
+                                            <Target className="h-3 w-3 opacity-70" />
+                                            {modeName}
+                                          </span>
+                                          {isSelected && (
+                                            <Check className="h-4 w-4 text-primary flex-shrink-0" />
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          Selecting a scenario will pre-fill the form below. You can still edit any details before assigning.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="space-y-3">
                     <Label htmlFor="scenario-title" className="text-base font-semibold">
                       Title <span className="text-destructive">*</span>

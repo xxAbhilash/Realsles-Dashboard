@@ -168,6 +168,7 @@ const scenarioTextWithHighlights = (text: string): ReactNode => {
 };
 
 const PLACEHOLDER_SCENARIO = "Describe the scenario...";
+const PLACEHOLDER_MESSAGE = "Message for the assigned users...";
 
 function getCursorOffset(container: HTMLElement): number {
   const sel = window.getSelection();
@@ -241,12 +242,17 @@ const isTeamScenario = (scenario: ScenarioItem): boolean => {
   return roleStr === "sales_manager";
 };
 
+/** True when scenario is a system scenario (created by super_admin). */
+const isSystemScenario = (scenario: ScenarioItem): boolean => {
+  return !!getCreatorRoleBadge(scenario);
+};
+
 // ──────────────────────────────────────────────────────────
 // Component
 // ──────────────────────────────────────────────────────────
 
 export function ScenarioLibrary() {
-  const { Get, Post, Delete } = useApi();
+  const { Get, Post, Put, Delete } = useApi();
   const dispatch = useDispatch();
   const user = useSelector((state: any) => state.auth.user);
   const refreshTrigger = useSelector((state: any) => state.scenarioLibrary?.refreshTrigger ?? 0);
@@ -257,6 +263,7 @@ export function ScenarioLibrary() {
   const [error, setError] = useState<string | null>(null);
 
   // UI states
+  const [scenarioSource, setScenarioSource] = useState<"system" | "custom">("system");
   const [searchQuery, setSearchQuery] = useState("");
   const [modeFilter, setModeFilter] = useState<string>("all");
   const [teamFilter, setTeamFilter] = useState<string>("all");
@@ -290,6 +297,18 @@ export function ScenarioLibrary() {
   const [shareDocumentUploading, setShareDocumentUploading] = useState(false);
   const scenarioTextEditableRef = useRef<HTMLDivElement>(null);
   const scenarioTextCursorRef = useRef<number | null>(null);
+  const messageEditableRef = useRef<HTMLDivElement>(null);
+  const messageCursorRef = useRef<number | null>(null);
+
+  // Detail edit state
+  const [isDetailEditing, setIsDetailEditing] = useState(false);
+  const [detailForm, setDetailForm] = useState({
+    title: "",
+    scenario_text: "",
+    message: "",
+    document_content: "",
+    time_limit_days: 0,
+  });
 
   // Delete team scenario
   const [scenarioToDelete, setScenarioToDelete] = useState<ScenarioItem | null>(null);
@@ -687,6 +706,14 @@ export function ScenarioLibrary() {
     if (el) restoreCursor(el, pending);
   }, [shareForm.scenario_text]);
 
+  useEffect(() => {
+    const pending = messageCursorRef.current;
+    if (pending === null) return;
+    messageCursorRef.current = null;
+    const el = messageEditableRef.current;
+    if (el) restoreCursor(el, pending);
+  }, [shareForm.message]);
+
   // ──────────────────────────────────────────────────────
   // Derived data (filters / stats)
   // ──────────────────────────────────────────────────────
@@ -747,11 +774,15 @@ export function ScenarioLibrary() {
       // Team filter
       if (teamFilter !== "all" && s.team_name !== teamFilter) return false;
 
+      // Source filter: system vs custom/modified
+      if (scenarioSource === "system" && !isSystemScenario(s)) return false;
+      if (scenarioSource === "custom" && isSystemScenario(s)) return false;
+
       return true;
     });
     // System scenarios first, then team scenarios, then others
     return [...filtered].sort((a, b) => creatorRoleSortOrder(a) - creatorRoleSortOrder(b));
-  }, [scenarios, searchQuery, modeFilter, teamFilter]);
+  }, [scenarios, searchQuery, modeFilter, teamFilter, scenarioSource]);
 
   // Statistics (library = catalog count only)
   const stats = useMemo(() => ({
@@ -773,6 +804,7 @@ export function ScenarioLibrary() {
 
   const handleScenarioClick = (scenario: ScenarioItem) => {
     setSelectedScenario(scenario);
+    setIsDetailEditing(false);
     setIsDetailOpen(true);
   };
 
@@ -1040,6 +1072,92 @@ export function ScenarioLibrary() {
     );
   })();
 
+  const handleStartDetailEdit = () => {
+    if (!_ds || !isTeamScenario(_ds)) return;
+    setDetailForm({
+      title: _dsTitle,
+      scenario_text: _dsScenarioText ?? "",
+      message: _dsMessage ?? "",
+      document_content: _dsDocContent ?? "",
+      time_limit_days: _ds.time_limit_days ?? 0,
+    });
+    setIsDetailEditing(true);
+  };
+
+  const handleCancelDetailEdit = () => {
+    setIsDetailEditing(false);
+  };
+
+  const handleSaveDetailEdit = async () => {
+    if (!_ds || !_ds.scenario_id) {
+      showToast.error("Scenario ID is missing");
+      return;
+    }
+    const scenarioId = String(_ds.scenario_id);
+
+    const origTitle = _dsTitle;
+    const origScenarioText = _dsScenarioText ?? "";
+    const origMessage = _dsMessage ?? "";
+    const origDocContent = _dsDocContent ?? "";
+    const origTimeLimit = _ds.time_limit_days ?? 0;
+
+    const title = detailForm.title.trim();
+    const scenarioText = detailForm.scenario_text.trim();
+    const message = detailForm.message.trim();
+    const docContent = detailForm.document_content;
+    const timeLimit = detailForm.time_limit_days;
+
+    const body: any = {};
+    if (title !== origTitle.trim()) body.title = title;
+    if (scenarioText !== origScenarioText.trim()) body.scenario_text = stripCurlyBraces(scenarioText);
+    if (message !== origMessage.trim()) body.message = stripCurlyBraces(message);
+    if (docContent !== origDocContent) body.document_content = docContent;
+    if (timeLimit !== origTimeLimit) body.time_limit_days = timeLimit;
+    if ((_ds as any).session_id) body.session_id = String((_ds as any).session_id);
+
+    if (Object.keys(body).length === 0) {
+      showToast.error("No changes to save");
+      return;
+    }
+
+    try {
+      await Put(`${apis.scenarios}${scenarioId}`, body);
+      // Update local state
+      setScenarios((prev) =>
+        prev.map((s) =>
+          s.scenario_id === _ds.scenario_id
+            ? {
+                ...s,
+                title,
+                scenario: scenarioText || s.scenario,
+                scenario_text: scenarioText || (s as any).scenario_text,
+                message,
+                document_content: docContent,
+                time_limit_days: timeLimit,
+              }
+            : s
+        )
+      );
+      setSelectedScenario((prev) =>
+        prev && prev.scenario_id === _ds.scenario_id
+          ? {
+              ...prev,
+              title,
+              scenario: scenarioText || prev.scenario,
+              scenario_text: scenarioText || (prev as any).scenario_text,
+              message,
+              document_content: docContent,
+              time_limit_days: timeLimit,
+            }
+          : prev
+      );
+      setIsDetailEditing(false);
+      dispatch(triggerRefresh());
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || "Failed to update scenario");
+    }
+  };
+
   // Share dialog — pre-compute grouped members (avoids re-computing inside JSX)
   const _shareGrouped = useMemo(() => {
     const byTeam: Record<string, any[]> = {};
@@ -1141,42 +1259,69 @@ export function ScenarioLibrary() {
                     )}
                   </div>
 
-                  {/* View toggle */}
-                  <div className="flex items-center gap-1 border border-border rounded-lg p-1">
-                    <button
-                      onClick={() => setViewMode("grid")}
-                      className={`p-1.5 rounded-md transition-colors ${
-                        viewMode === "grid"
-                          ? "bg-yellow-100 text-black"
-                          : "text-black/40 hover:text-black/60"
-                      }`}
-                    >
-                      <LayoutGrid className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => setViewMode("list")}
-                      className={`p-1.5 rounded-md transition-colors ${
-                        viewMode === "list"
-                          ? "bg-yellow-100 text-black"
-                          : "text-black/40 hover:text-black/60"
-                      }`}
-                    >
-                      <List className="h-4 w-4" />
-                    </button>
-                  </div>
+                  {/* Controls: view mode, source, filters */}
+                  <div className="flex items-center justify-end gap-2 self-end sm:self-auto">
+                    {/* View toggle */}
+                    <div className="flex items-center gap-1 border border-border rounded-lg p-1 bg-white">
+                      <button
+                        onClick={() => setViewMode("grid")}
+                        className={`p-1.5 rounded-md transition-colors ${
+                          viewMode === "grid"
+                            ? "bg-yellow-100 text-black"
+                            : "text-black/40 hover:text-black/60"
+                        }`}
+                      >
+                        <LayoutGrid className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => setViewMode("list")}
+                        className={`p-1.5 rounded-md transition-colors ${
+                          viewMode === "list"
+                            ? "bg-yellow-100 text-black"
+                            : "text-black/40 hover:text-black/60"
+                        }`}
+                      >
+                        <List className="h-4 w-4" />
+                      </button>
+                    </div>
 
-                  {/* Filter toggle */}
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowFilters(!showFilters)}
-                    className={`gap-2 border-border ${showFilters ? "bg-yellow-50 border-yellow-300" : ""}`}
-                  >
-                    <SlidersHorizontal className="h-4 w-4" />
-                    Filters
-                    {isAnyFilterActive && (
-                      <span className="w-2 h-2 rounded-full bg-yellow-500" />
-                    )}
-                  </Button>
+                    {/* Source toggle: system vs custom */}
+                    <div className="hidden sm:flex items-center gap-1 border border-border rounded-lg p-1 bg-white">
+                      <button
+                        onClick={() => setScenarioSource("system")}
+                        className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                          scenarioSource === "system"
+                            ? "bg-yellow-100 text-black"
+                            : "text-black/40 hover:text-black/70"
+                        }`}
+                      >
+                        System
+                      </button>
+                      <button
+                        onClick={() => setScenarioSource("custom")}
+                        className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                          scenarioSource === "custom"
+                            ? "bg-yellow-100 text-black"
+                            : "text-black/40 hover:text-black/70"
+                        }`}
+                      >
+                        Team / custom
+                      </button>
+                    </div>
+
+                    {/* Filter toggle */}
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowFilters(!showFilters)}
+                      className={`gap-2 border-border ${showFilters ? "bg-yellow-50 border-yellow-300" : ""}`}
+                    >
+                      <SlidersHorizontal className="h-4 w-4" />
+                      Filters
+                      {isAnyFilterActive && (
+                        <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Filter row (collapsible) */}
@@ -1318,13 +1463,32 @@ export function ScenarioLibrary() {
                     </span>
                   )}
                 </div>
+                {isTeamScenario(_ds) && !isDetailEditing && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 text-xs font-medium"
+                    onClick={handleStartDetailEdit}
+                  >
+                    Edit
+                  </Button>
+                )}
               </div>
 
               <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
                 {/* 1. Title */}
                 <section>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Title</p>
-                  <h2 className="text-[1.0625rem] font-semibold text-[#1a1a1a] leading-snug">{_dsTitle}</h2>
+                  {isDetailEditing ? (
+                    <Input
+                      value={detailForm.title}
+                      onChange={(e) => setDetailForm((p) => ({ ...p, title: e.target.value }))}
+                      className="h-10"
+                    />
+                  ) : (
+                    <h2 className="text-[1.0625rem] font-semibold text-[#1a1a1a] leading-snug">{_dsTitle}</h2>
+                  )}
                 </section>
 
                 {/* 2. Mode */}
@@ -1426,42 +1590,107 @@ export function ScenarioLibrary() {
                 {/* 4. Scenario text */}
                 <section>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Scenario text</p>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50/50 px-4 py-3">
-                    <p className="text-sm text-[#1a1a1a] leading-relaxed whitespace-pre-wrap">{_dsScenarioText ?? "—"}</p>
-                  </div>
+                  {isDetailEditing ? (
+                    <Textarea
+                      value={detailForm.scenario_text}
+                      onChange={(e) => setDetailForm((p) => ({ ...p, scenario_text: e.target.value }))}
+                      className="min-h-[100px] resize-none"
+                    />
+                  ) : (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50/50 px-4 py-3">
+                      <p className="text-sm text-[#1a1a1a] leading-relaxed whitespace-pre-wrap">{_dsScenarioText ?? "—"}</p>
+                    </div>
+                  )}
                 </section>
 
                 {/* 5. Message */}
                 <section>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Message</p>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50/50 px-4 py-3">
-                    <p className="text-sm text-[#1a1a1a] leading-relaxed whitespace-pre-wrap">{_dsMessage ?? "—"}</p>
-                  </div>
+                  {isDetailEditing ? (
+                    <Textarea
+                      value={detailForm.message}
+                      onChange={(e) => setDetailForm((p) => ({ ...p, message: e.target.value }))}
+                      className="min-h-[80px] resize-none"
+                    />
+                  ) : (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50/50 px-4 py-3">
+                      <p className="text-sm text-[#1a1a1a] leading-relaxed whitespace-pre-wrap">{_dsMessage ?? "—"}</p>
+                    </div>
+                  )}
                 </section>
 
                 {/* 6. Document content */}
                 <section>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Document content attached with the mode</p>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50/50 px-4 py-3">
-                    <p className="text-sm text-[#1a1a1a]">{_dsDocContent ? "Document attached" : "No document content attached."}</p>
-                  </div>
+                  {isDetailEditing ? (
+                    <Textarea
+                      value={detailForm.document_content}
+                      onChange={(e) => setDetailForm((p) => ({ ...p, document_content: e.target.value }))}
+                      className="min-h-[80px] resize-none"
+                    />
+                  ) : (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50/50 px-4 py-3">
+                      <p className="text-sm text-[#1a1a1a]">{_dsDocContent ? "Document attached" : "No document content attached."}</p>
+                    </div>
+                  )}
                 </section>
 
                 {/* 7. Time limit */}
                 <section>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Time limit</p>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50/50 px-4 py-3 flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-gray-500" />
-                    <p className="text-sm font-medium text-[#1a1a1a]">
-                      {_ds.time_limit_days !== undefined && _ds.time_limit_days !== null
-                        ? `${_ds.time_limit_days} ${_ds.time_limit_days === 1 ? "day" : "days"}`
-                        : "—"}
-                    </p>
-                  </div>
+                  {isDetailEditing ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50/50 px-4 py-3 flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-gray-500" />
+                      <Input
+                        type="number"
+                        min={0}
+                        value={detailForm.time_limit_days}
+                        onChange={(e) =>
+                          setDetailForm((p) => ({
+                            ...p,
+                            time_limit_days: Number.isNaN(parseInt(e.target.value, 10))
+                              ? 0
+                              : parseInt(e.target.value, 10),
+                          }))
+                        }
+                        className="h-9 w-24"
+                      />
+                      <span className="text-xs text-gray-500">days</span>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50/50 px-4 py-3 flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-gray-500" />
+                      <p className="text-sm font-medium text-[#1a1a1a]">
+                        {_ds.time_limit_days !== undefined && _ds.time_limit_days !== null
+                          ? `${_ds.time_limit_days} ${_ds.time_limit_days === 1 ? "day" : "days"}`
+                          : "—"}
+                      </p>
+                    </div>
+                  )}
                 </section>
 
-                {/* Share button */}
-                <div className="pt-4 border-t border-gray-100">
+                {/* Actions */}
+                <div className="pt-4 border-t border-gray-100 flex flex-col gap-3">
+                  {isDetailEditing && (
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={handleCancelDetailEdit}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        className="flex-1"
+                        onClick={handleSaveDetailEdit}
+                        disabled={!detailForm.title.trim()}
+                      >
+                        Save changes
+                      </Button>
+                    </div>
+                  )}
                   <Button
                     className="w-full gap-2"
                     onClick={() => {
@@ -1616,12 +1845,24 @@ export function ScenarioLibrary() {
               </div>
               <div className="space-y-2">
                 <Label>Message (optional)</Label>
-                <Textarea
-                  value={shareForm.message}
-                  onChange={(e) => setShareForm((p) => ({ ...p, message: e.target.value }))}
-                  placeholder="Message for the assigned users..."
-                  className="min-h-[80px] resize-none"
-                />
+                <div
+                  ref={messageEditableRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm whitespace-pre-wrap overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-text"
+                  onInput={(e) => {
+                    const el = e.currentTarget;
+                    let text = el.innerText ?? "";
+                    if (text === PLACEHOLDER_MESSAGE) text = "";
+                    else if (text.startsWith(PLACEHOLDER_MESSAGE)) text = text.slice(PLACEHOLDER_MESSAGE.length);
+                    messageCursorRef.current = getCursorOffset(el);
+                    setShareForm((p) => ({ ...p, message: text }));
+                  }}
+                >
+                  {scenarioTextWithHighlights(shareForm.message) ?? (
+                    <span className="text-muted-foreground">{PLACEHOLDER_MESSAGE}</span>
+                  )}
+                </div>
               </div>
               {/* Document: existing vs upload new */}
               <div className="space-y-3">
